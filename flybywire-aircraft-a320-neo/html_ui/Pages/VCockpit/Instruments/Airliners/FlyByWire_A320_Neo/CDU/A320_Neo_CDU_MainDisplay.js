@@ -560,12 +560,6 @@ class A320_Neo_CDU_MainDisplay extends FMCMainDisplay {
             content = "------------------------";
         }
         if (content !== "") {
-            if (content.indexOf("[s-text]") !== -1) {
-                content = content.replace("[s-text]", "");
-                this._lineElements[row][col].classList.add("s-text");
-            } else {
-                this._lineElements[row][col].classList.remove("s-text");
-            }
             let color = content.split("[color]")[1];
             if (!color) {
                 color = "white";
@@ -573,6 +567,10 @@ class A320_Neo_CDU_MainDisplay extends FMCMainDisplay {
             const e = this._lineElements[row][col];
             content = content.split("[color]")[0];
             content = `{${color}}${content}{end}`;
+            if (content.indexOf("[s-text]") !== -1) {
+                content = content.replace("[s-text]", "");
+                content = `{small}${content}{end}`;
+            }
         }
         this._lines[row][col] = content;
         this._lineElements[row][col].textContent = this._lines[row][col];
