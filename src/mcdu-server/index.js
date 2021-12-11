@@ -6,6 +6,7 @@ const WebSocket = require('ws');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const network = require('network');
 
 // This tells pkg to include these files in the binary
 path.join(__dirname, 'client/build/android-chrome-192x192.png');
@@ -17,6 +18,8 @@ path.join(__dirname, 'client/build/HoneywellMCDU.ttf');
 path.join(__dirname, 'client/build/HoneywellMCDUSmall.ttf');
 path.join(__dirname, 'client/build/index.html');
 path.join(__dirname, 'client/build/mcdu-r2-c.png');
+
+console.log('Starting server...');
 
 // Simple HTTP server for the web-based client
 http.createServer((request, response) => {
@@ -64,49 +67,51 @@ http.createServer((request, response) => {
     });
 }).listen(8125);
 
-const interfraces = require('os').networkInterfaces();
+network.get_private_ip((err, ip) => {
+    // Create websocket server
+    const websocketPort = process.argv[2] || 8080;
+    let wss = null;
 
-const ip = Object.keys(interfraces)
-    .map((x) => [x, interfraces[x].filter((x) => x.family === 'IPv4')[0]])
-    .filter((x) => (x[1] && (x[1].address.startsWith('192.168.') || x[1].address.startsWith('10.') || x[1].address.startsWith('172.'))))
-    .map((x) => x[1].address)[0];
+    wss = new WebSocket.Server({ port: websocketPort }, () => {
+        console.clear();
+        console.log('External MCDU server started.\n');
+        console.log('Waiting for simulator...');
+    });
 
-// Create websocket server
-const websocketPort = process.argv[2] || 8080;
-let wss = null;
+    wss.on('error', (err) => {
+        console.error(`${err}`);
+        setTimeout(() => {}, 5000);
+    });
 
-wss = new WebSocket.Server({ port: websocketPort }, () => {
-    console.clear();
-    console.log('External MCDU server started.\n');
-    console.log('Waiting for simulator...');
-});
-
-wss.on('error', (err) => {
-    console.error(`${err}`);
-    setTimeout(() => {}, 5000);
-});
-
-wss.on('connection', (ws) => {
-    let isMcdu = false;
-    ws.on('message', (message) => {
-        if (message === 'mcduConnected') {
-            console.clear();
-            console.log('\x1b[32mSimulator connected!\x1b[0m\n');
-            console.log(`To control the MCDU from another device on your network, open \x1b[47m\x1b[30mhttp://${ip}:8125\x1b[0m in your browser.`);
-            console.log('To control the MCDU from this device, open \x1b[47m\x1b[30mhttp://localhost:8125\x1b[0m in your browser.');
-            isMcdu = true;
-            return;
-        }
-        wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(message);
+    wss.on('connection', (ws) => {
+        let isMcdu = false;
+        ws.on('message', (message) => {
+            if (message === 'mcduConnected') {
+                console.clear();
+                console.log('\x1b[32mSimulator connected!\x1b[0m\n');
+                if (err) {
+                    console.log('To control the MCDU from this device, open \x1b[47m\x1b[30mhttp://localhost:8125\x1b[0m in your browser.');
+                    console.log('\nTo control the MCDU from another device on your network, replace localhost with your local IP address.');
+                    // eslint-disable-next-line max-len
+                    console.log('To find your local IP address, see here: \x1b[47m\x1b[30mhttps://support.microsoft.com/en-us/windows/find-your-ip-address-in-windows-f21a9bbc-c582-55cd-35e0-73431160a1b90\x1b[0m');
+                } else {
+                    console.log(`To control the MCDU from another device on your network, open \x1b[47m\x1b[30mhttp://${ip}:8125\x1b[0m in your browser.`);
+                    console.log('To control the MCDU from this device, open \x1b[47m\x1b[30mhttp://localhost:8125\x1b[0m in your browser.');
+                }
+                isMcdu = true;
+                return;
+            }
+            wss.clients.forEach((client) => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(message);
+                }
+            });
+        });
+        ws.on('close', () => {
+            if (isMcdu) {
+                console.clear();
+                console.log('\x1b[31mLost connection to simulator.\x1b[0m\n\nWaiting for simulator...');
             }
         });
-    });
-    ws.on('close', () => {
-        if (isMcdu) {
-            console.clear();
-            console.log('\x1b[31mLost connection to simulator.\x1b[0m\n\nWaiting for simulator...');
-        }
     });
 });
