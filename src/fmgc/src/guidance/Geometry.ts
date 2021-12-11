@@ -316,7 +316,7 @@ export class Geometry {
         } if (outboundTransition instanceof CourseCaptureTransition || outboundTransition instanceof DirectToFixTransition) {
             const dtg = activeLeg.getDistanceToGo(ppos);
 
-            if (dtg < 0) {
+            if (dtg <= 0) {
                 return true;
             }
         }
