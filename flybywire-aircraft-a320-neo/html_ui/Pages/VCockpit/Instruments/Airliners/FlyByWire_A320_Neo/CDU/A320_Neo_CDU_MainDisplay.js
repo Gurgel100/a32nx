@@ -299,6 +299,9 @@ class A320_Neo_CDU_MainDisplay extends FMCMainDisplay {
                 this.connectWebsocket();
             }
         }, 5000);
+        setInterval(() => {
+            this.sendUpdate();
+        }, 500);
     }
 
     requestUpdate() {
@@ -1501,28 +1504,55 @@ class A320_Neo_CDU_MainDisplay extends FMCMainDisplay {
      * Sends an update to the websocket server (if connected) with the current state of the MCDU
      */
     sendUpdate() {
-        const left = {
+        let left = {
             lines: [
-                this._labels[0],
-                this._lines[0],
-                this._labels[1],
-                this._lines[1],
-                this._labels[2],
-                this._lines[2],
-                this._labels[3],
-                this._lines[3],
-                this._labels[4],
-                this._lines[4],
-                this._labels[5],
-                this._lines[5],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
+                ['', '', ''],
             ],
-            scratchpad: this.scratchpad._displayUnit._scratchpadElement.textContent,
-            title: this._title,
-            titleLeft: `{small}${this._titleLeft}{end}`,
-            page: this._pageCount > 0 ? `{small}${this._pageCurrent}/${this._pageCount}{end}` : '',
-            arrows: this._arrows
+            scratchpad: '',
+            title: '',
+            titleLeft: '',
+            page: '',
+            arrows: [false, false, false, false]
         };
-        const right = left;
+        let right = left;
+        if (SimVar.GetSimVarValue("L:A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED", "bool")) {
+            left = {
+                lines: [
+                    this._labels[0],
+                    this._lines[0],
+                    this._labels[1],
+                    this._lines[1],
+                    this._labels[2],
+                    this._lines[2],
+                    this._labels[3],
+                    this._lines[3],
+                    this._labels[4],
+                    this._lines[4],
+                    this._labels[5],
+                    this._lines[5],
+                ],
+                scratchpad: this.scratchpad._displayUnit._scratchpadElement.textContent,
+                title: this._title,
+                titleLeft: `{small}${this._titleLeft}{end}`,
+                page: this._pageCount > 0 ? `{small}${this._pageCurrent}/${this._pageCount}{end}` : '',
+                arrows: this._arrows
+            };
+        }
+
+        if (SimVar.GetSimVarValue("L:A32NX_ELEC_AC_2_BUS_IS_POWERED", "bool")) {
+            right = left;
+        }
         const content = {right, left};
         this.sendToSocket(`update:${JSON.stringify(content)}`);
     }
