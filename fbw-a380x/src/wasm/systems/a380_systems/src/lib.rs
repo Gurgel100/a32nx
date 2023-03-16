@@ -154,6 +154,7 @@ impl Aircraft for A380 {
             &self.engine_fire_overhead,
             [&self.engine_1, &self.engine_2],
             self.lgcius.lgciu1(),
+            &self.adirs,
         );
 
         self.electrical_overhead

@@ -15,7 +15,6 @@ use uom::si::{angular_velocity::revolution_per_minute, f64::*};
 use systems::electrical::Battery;
 
 use std::time::Duration;
-use systems::simulation::VariableIdentifier;
 use systems::{
     accept_iterable,
     electrical::{
@@ -38,6 +37,7 @@ use systems::{
         Write,
     },
 };
+use systems::{shared::AdirsDiscreteOutputs, simulation::VariableIdentifier};
 
 pub(super) struct A380Electrical {
     galley_is_shed_id: VariableIdentifier,
@@ -106,6 +106,7 @@ impl A380Electrical {
         engine_fire_push_buttons: &impl EngineFirePushButtons,
         engines: [&impl EngineCorrectedN2; 2],
         lgciu1: &impl LgciuWeightOnWheels,
+        adirs: &impl AdirsDiscreteOutputs,
     ) {
         self.alternating_current.update_main_power_sources(
             context,
@@ -161,6 +162,7 @@ impl A380Electrical {
             apu,
             apu_overhead,
             lgciu1,
+            adirs,
         );
 
         self.alternating_current.update_after_direct_current(
@@ -2373,6 +2375,38 @@ mod a380_electrical_circuit_tests {
         }
     }
 
+    struct TestAdiruSystem {
+        indicated_airspeed: Velocity,
+    }
+    impl TestAdiruSystem {
+        fn new(context: &UpdateContext) -> Self {
+            Self {
+                indicated_airspeed: context.indicated_airspeed(),
+            }
+        }
+    }
+    impl AdirsDiscreteOutputs for TestAdiruSystem {
+        fn low_speed_warning_1_104kts(&self, adiru_number: usize) -> bool {
+            assert_eq!(adiru_number, 1);
+            self.indicated_airspeed.get::<knot>() >= 100.
+        }
+
+        fn low_speed_warning_2_54kts(&self, adiru_number: usize) -> bool {
+            assert_eq!(adiru_number, 1);
+            todo!()
+        }
+
+        fn low_speed_warning_3_159kts(&self, adiru_number: usize) -> bool {
+            assert_eq!(adiru_number, 1);
+            todo!()
+        }
+
+        fn low_speed_warning_4_260kts(&self, adiru_number: usize) -> bool {
+            assert_eq!(adiru_number, 1);
+            todo!()
+        }
+    }
+
     struct A380ElectricalTestAircraft {
         engines: [TestEngine; 2],
         ext_pwr: ExternalPowerSource,
@@ -2493,6 +2527,7 @@ mod a380_electrical_circuit_tests {
                 &self.engine_fire_push_buttons,
                 [&self.engines[0], &self.engines[1]],
                 &TestLandingGear::new(),
+                &TestAdiruSystem::new(context),
             );
             self.overhead
                 .update_after_electrical(&self.elec, electricity);

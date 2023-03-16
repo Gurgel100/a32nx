@@ -2,6 +2,7 @@ use super::{
     A380AlternatingCurrentElectricalSystem, A380DirectCurrentElectricalSystem,
     A380ElectricalOverheadPanel,
 };
+use systems::shared::AdirsDiscreteOutputs;
 use systems::simulation::InitContext;
 use systems::{
     electrical::{
@@ -99,6 +100,7 @@ impl A380DirectCurrentElectrical {
         apu: &mut impl AuxiliaryPowerUnitElectrical,
         apu_overhead: &(impl ApuMaster + ApuStart),
         lgciu1: &impl LgciuWeightOnWheels,
+        adirs: &impl AdirsDiscreteOutputs,
     ) {
         self.tr_1_contactor
             .close_when(electricity.is_powered(ac_state.tr_1()));
@@ -172,6 +174,7 @@ impl A380DirectCurrentElectrical {
             apu,
             apu_overhead,
             ac_state,
+            adirs,
         );
         self.battery_1_contactor
             .close_when(self.battery_1_charge_limiter.should_close_contactor());
@@ -192,6 +195,7 @@ impl A380DirectCurrentElectrical {
             apu,
             apu_overhead,
             ac_state,
+            adirs,
         );
         self.battery_2_contactor
             .close_when(self.battery_2_charge_limiter.should_close_contactor());
