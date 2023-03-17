@@ -2335,43 +2335,45 @@ mod a380_electrical_circuit_tests {
         }
     }
 
-    struct TestLandingGear {}
+    struct TestLandingGear {
+        is_down: bool,
+    }
     impl TestLandingGear {
-        fn new() -> Self {
-            Self {}
+        fn new(is_down: bool) -> Self {
+            Self { is_down }
         }
     }
     impl LgciuWeightOnWheels for TestLandingGear {
         fn right_gear_compressed(&self, _: bool) -> bool {
-            false
+            self.is_down
         }
 
         fn right_gear_extended(&self, _: bool) -> bool {
-            true
+            !self.is_down
         }
 
         fn left_gear_compressed(&self, _: bool) -> bool {
-            false
+            self.is_down
         }
 
         fn left_gear_extended(&self, _: bool) -> bool {
-            true
+            !self.is_down
         }
 
         fn left_and_right_gear_compressed(&self, _: bool) -> bool {
-            false
+            self.is_down
         }
 
         fn left_and_right_gear_extended(&self, _: bool) -> bool {
-            true
+            !self.is_down
         }
 
         fn nose_gear_compressed(&self, _: bool) -> bool {
-            false
+            self.is_down
         }
 
         fn nose_gear_extended(&self, _: bool) -> bool {
-            true
+            !self.is_down
         }
     }
 
@@ -2526,7 +2528,7 @@ mod a380_electrical_circuit_tests {
                 &self.apu_overhead,
                 &self.engine_fire_push_buttons,
                 [&self.engines[0], &self.engines[1]],
-                &TestLandingGear::new(),
+                &TestLandingGear::new(context.is_on_ground()),
                 &TestAdiruSystem::new(context),
             );
             self.overhead
