@@ -3,6 +3,8 @@
 mod battery;
 mod battery_charge_limiter;
 mod battery_charge_rectifier_unit;
+mod circuit;
+mod circuit_breaker;
 pub mod consumption;
 mod emergency_generator;
 mod engine_generator;

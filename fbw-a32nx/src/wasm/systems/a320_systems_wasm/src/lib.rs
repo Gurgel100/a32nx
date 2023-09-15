@@ -1,6 +1,7 @@
 mod ailerons;
 mod autobrakes;
 mod brakes;
+mod circuit_brakers;
 mod elevators;
 mod flaps;
 mod gear;
@@ -15,6 +16,7 @@ use a320_systems::A320;
 use ailerons::ailerons;
 use autobrakes::autobrakes;
 use brakes::brakes;
+use circuit_brakers::circuit_brakers;
 use elevators::elevators;
 use flaps::flaps;
 use gear::gear;
@@ -396,6 +398,7 @@ async fn systems(mut gauge: msfs::Gauge) -> Result<(), Box<dyn Error>> {
     .with_aspect(gear)?
     .with_aspect(payload)?
     .with_aspect(trimmable_horizontal_stabilizer)?
+    .with_aspect(circuit_brakers)?
     .build(A320::new)?;
 
     while let Some(event) = gauge.next_event().await {
