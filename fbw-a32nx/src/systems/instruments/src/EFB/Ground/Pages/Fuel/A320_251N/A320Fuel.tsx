@@ -293,7 +293,6 @@ export const A320Fuel: React.FC<FuelProps> = ({
                         inlinedTitle
                         width={420}
                     />
-                    it
                     <TankReadoutWidget
                         title={t('Ground.Fuel.CenterTank')}
                         current={centerCurrent}
