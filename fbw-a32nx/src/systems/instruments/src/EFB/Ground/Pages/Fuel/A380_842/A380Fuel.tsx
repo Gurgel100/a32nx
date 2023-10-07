@@ -1,13 +1,13 @@
 /* eslint-disable max-len */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { round } from 'lodash';
-// import { CloudArrowDown, PlayFill, StopCircleFill } from 'react-bootstrap-icons';
+import { CloudArrowDown /* , PlayFill, StopCircleFill */ } from 'react-bootstrap-icons';
 import { useSimVar, usePersistentNumberProperty, usePersistentProperty, Units } from '@flybywiresim/fbw-sdk';
 // import Slider from 'rc-slider';
 import Card from 'instruments/src/EFB/UtilComponents/Card/Card';
 // import { FuelInputTable } from '../FuelInputTable';
 import { t } from '../../../../translation';
-// import { TooltipWrapper } from '../../../../UtilComponents/TooltipWrapper';
+import { TooltipWrapper } from '../../../../UtilComponents/TooltipWrapper';
 // import { SelectGroup, SelectItem } from '../../../../UtilComponents/Form/Select';
 // import { ProgressBar } from '../../../../UtilComponents/Progress/Progress';
 import { SimpleInput } from '../../../../UtilComponents/Form/SimpleInput/SimpleInput';
@@ -25,7 +25,7 @@ interface ValueInputProps {
 }
 
 const ValueInput: React.FC<ValueInputProps> = ({ min, max, value, onBlur, unit, disabled }) => (
-    <div className="relative w-44">
+    <div className="relative w-52">
         <SimpleInput
             className={`my-2 w-full font-mono ${(disabled ? 'cursor-not-allowed placeholder-theme-body text-theme-body' : '')}`}
             fontSizeClassName="text-2xl"
@@ -36,6 +36,49 @@ const ValueInput: React.FC<ValueInputProps> = ({ min, max, value, onBlur, unit, 
             onBlur={onBlur}
         />
         <div className="flex absolute top-0 right-3 items-center h-full font-mono text-2xl text-gray-400">{unit}</div>
+    </div>
+);
+
+interface ValueSimbriefInputProps {
+    min: number,
+    max: number,
+    value: number
+    onBlur: (v: string) => void,
+    unit: string,
+    showSimbriefButton: boolean,
+    onClickSync: () => void,
+    disabled?: boolean
+}
+
+const ValueSimbriefInput: React.FC<ValueSimbriefInputProps> = ({ min, max, value, onBlur, unit, showSimbriefButton, onClickSync, disabled }) => (
+    <div className="relative w-52">
+        <div className="flex flex-row">
+            <div className="relative">
+                <SimpleInput
+                    className={`${showSimbriefButton && 'rounded-r-none'} my-2 w-full font-mono ${(disabled ? 'cursor-not-allowed placeholder-theme-body text-theme-body' : '')}`}
+                    fontSizeClassName="text-2xl"
+                    number
+                    min={min}
+                    max={max}
+                    value={value.toFixed(0)}
+                    onBlur={onBlur}
+                />
+                <div className="flex absolute top-0 right-3 items-center h-full font-mono text-2xl text-gray-400">{unit}</div>
+            </div>
+            {showSimbriefButton
+                && (
+                    <TooltipWrapper text={t('Ground.Payload.TT.FillPayloadFromSimbrief')}>
+                        <div
+                            className={`flex justify-center items-center my-2 px-2 h-auto text-theme-body
+                                        hover:text-theme-highlight bg-theme-highlight hover:bg-theme-body
+                                        rounded-md rounded-l-none border-2 border-theme-highlight transition duration-100`}
+                            onClick={onClickSync}
+                        >
+                            <CloudArrowDown size={26} />
+                        </div>
+                    </TooltipWrapper>
+                )}
+        </div>
     </div>
 );
 
@@ -113,14 +156,37 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [feedFourGal, setFeedFour] = useSimVar('FUELSYSTEM TANK QUANTITY:9', 'Gallons', 2_000); // 7299.6
     const [rightOuterGal, setRightOuter] = useSimVar('FUELSYSTEM TANK QUANTITY:10', 'Gallons', 2_000); // 2731.5
     const [trimGal, setTrim] = useSimVar('FUELSYSTEM TANK QUANTITY:11', 'Gallons', 2_000); // 6260.3
-    const [totalFuelWeightKg] = useSimVar('FUEL TOTAL QUANTITY WEIGHT', 'Kilograms', 2_000); // 6260.3
+    const [totalFuelWeightKg] = useSimVar('FUEL TOTAL QUANTITY WEIGHT', 'Kilograms', 500); // 6260.3
 
     // TODO: Remove debug override
-    const [refuelStartedByUser, setRefuelStartedByUser] = useSimVar('L:A32NX_REFUEL_STARTED_BY_USR', 'Bool');
+    const [_refuelStartedByUser, setRefuelStartedByUser] = useSimVar('L:A32NX_REFUEL_STARTED_BY_USR', 'Bool');
+
+    // Simbrief
+    const [showSimbriefButton, setShowSimbriefButton] = useState(false);
 
     // GSX
     const [gsxFuelSyncEnabled] = usePersistentNumberProperty('GSX_FUEL_SYNC', 0);
     const [gsxFuelHoseConnected] = useSimVar('L:FSDT_GSX_FUELHOSE_CONNECTED', 'Number');
+
+    useEffect(() => {
+        // GSX
+        if (gsxFuelSyncEnabled === 1) {
+            /*
+            if (boardingStarted) {
+                setShowSimbriefButton(false);
+                return;
+            }
+            */
+            setShowSimbriefButton(simbriefDataLoaded);
+            return;
+        }
+        // EFB
+        if (Math.abs(Math.round(totalFuelWeightKg) - roundUpNearest100(simbriefPlanRamp)) < 10) {
+            setShowSimbriefButton(false);
+            return;
+        }
+        setShowSimbriefButton(simbriefDataLoaded);
+    }, [totalFuelWeightKg, simbriefDataLoaded]);
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const airplaneCanRefuel = () => {
@@ -273,7 +339,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
     */
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const handleFuelAutoFill = () => {
+    const handleSimbriefFuelSync = () => {
         let fuelToLoad = -1;
 
         if (Units.usingMetric) {
@@ -300,13 +366,13 @@ export const A380Fuel: React.FC<FuelProps> = ({
                     <table className="w-full table-fixed">
                         <thead className="px-8 mx-2 w-full border-b">
                             <tr className="py-2">
-                                <th scope="col" className="py-2 px-4 w-2/5 font-medium text-left text-md">
+                                <th scope="col" className="py-2 px-4 w-1/5 font-medium text-left text-md">
                                     {'!!! TEMPORARY WIP !!! '}
                                 </th>
-                                <th scope="col" className="py-2 px-4 w-1/4 font-medium text-left text-md">
+                                <th scope="col" className="py-2 px-4 w-2/5 font-medium text-left text-md">
                                     {t('Ground.Payload.Planned')}
                                 </th>
-                                <th scope="col" className="py-2 px-4 w-1/4 font-medium text-left text-md">
+                                <th scope="col" className="py-2 px-4 w-2/5 font-medium text-left text-md">
                                     {t('Ground.Payload.Current')}
                                 </th>
                             </tr>
@@ -318,8 +384,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Feed One
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(OUTER_FEED_MAX_KG))}
@@ -337,7 +402,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(feedOneGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -348,8 +412,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Feed Two
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(INNER_FEED_MAX_KG))}
@@ -367,7 +430,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(feedTwoGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -378,8 +440,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Feed Three
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(INNER_FEED_MAX_KG))}
@@ -397,7 +458,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(feedThreeGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -408,8 +468,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Feed Four
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(OUTER_FEED_MAX_KG))}
@@ -427,7 +486,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(feedFourGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -438,8 +496,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Left Inner
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(INNER_TANK_MAX_KG))}
@@ -456,7 +513,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(leftInnerGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -467,8 +523,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Right Inner
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(INNER_TANK_MAX_KG))}
@@ -485,7 +540,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(rightInnerGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -496,8 +550,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Left Mid
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(MID_TANK_MAX_KG))}
@@ -514,7 +567,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(leftMidGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -525,8 +577,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Right Mid
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(MID_TANK_MAX_KG))}
@@ -543,7 +594,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(rightMidGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -554,8 +604,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Left Outer
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(OUTER_TANK_MAX_KG))}
@@ -572,7 +621,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(leftOuterGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -583,8 +631,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Right Outer
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(OUTER_TANK_MAX_KG))}
@@ -601,7 +648,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(rightOuterGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -612,8 +658,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Trim
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
                                         <ValueInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(TRIM_TANK_MAX_KG))}
@@ -630,7 +675,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
@@ -641,9 +685,8 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     Total Fuel
                                 </td>
                                 <td className="mx-8">
-                                    {/* <TooltipWrapper text={`${t('Ground.Payload.TT.MaxPassengers')} ${maxPax}`}> */}
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${/* (gsxPayloadSyncEnabled && boardingStarted) */ false ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
+                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
+                                        <ValueSimbriefInput
                                             min={0}
                                             max={Math.ceil(Units.kilogramToUser(TOTAL_FUEL_KG))}
                                             value={Units.kilogramToUser(totalFuelWeightKg)}
@@ -656,10 +699,11 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                                 }
                                             }}
                                             unit={massUnitForDisplay}
+                                            showSimbriefButton={showSimbriefButton}
+                                            onClickSync={handleSimbriefFuelSync}
                                             disabled={gsxFuelSyncEnabled === 1}
                                         />
                                     </div>
-                                    {/*  </TooltipWrapper> */}
                                 </td>
                                 <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(totalFuelWeightKg)} padTo={6} unit={massUnitForDisplay} />
@@ -668,21 +712,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                         </tbody>
                     </table>
                 </Card>
-                {/*
-                    {showSimbriefButton
-                        && (
-                            <TooltipWrapper text={t('Ground.Payload.TT.FillPayloadFromSimbrief')}>
-                                <div
-                                    className={`flex justify-center items-center px-2 h-auto text-theme-body
-                                                hover:text-theme-highlight bg-theme-highlight hover:bg-theme-body
-                                                rounded-md rounded-l-none border-2 border-theme-highlight transition duration-100`}
-                                    onClick={setSimBriefValues}
-                                >
-                                    <CloudArrowDown size={26} />
-                                </div>
-                            </TooltipWrapper>
-                        )}
-                        */}
             </div>
         </div>
     );
