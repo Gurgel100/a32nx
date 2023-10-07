@@ -1,17 +1,17 @@
 /* eslint-disable max-len */
 import React, { useCallback, useEffect, useState } from 'react';
 import { round } from 'lodash';
-import { CloudArrowDown /* , PlayFill, StopCircleFill */ } from 'react-bootstrap-icons';
+import { CloudArrowDown, PlayFill, StopCircleFill } from 'react-bootstrap-icons';
 import { useSimVar, usePersistentNumberProperty, usePersistentProperty, Units } from '@flybywiresim/fbw-sdk';
 // import Slider from 'rc-slider';
 import Card from 'instruments/src/EFB/UtilComponents/Card/Card';
-// import { FuelInputTable } from '../FuelInputTable';
+import { A380FuelOutline } from 'instruments/src/EFB/Assets/FuelOutline';
+import Slider from 'rc-slider';
 import { t } from '../../../../translation';
 import { TooltipWrapper } from '../../../../UtilComponents/TooltipWrapper';
-// import { SelectGroup, SelectItem } from '../../../../UtilComponents/Form/Select';
-// import { ProgressBar } from '../../../../UtilComponents/Progress/Progress';
 import { SimpleInput } from '../../../../UtilComponents/Form/SimpleInput/SimpleInput';
-// import { OverWingOutline } from '../../../../Assets/OverWingOutline';
+import { SelectGroup, SelectItem } from '../../../../UtilComponents/Form/Select';
+import { ProgressBar } from '../../../../UtilComponents/Progress/Progress';
 
 // TODO: Page is very WIP, needs to be cleaned up and refactored
 
@@ -25,7 +25,7 @@ interface ValueInputProps {
 }
 
 const ValueInput: React.FC<ValueInputProps> = ({ min, max, value, onBlur, unit, disabled }) => (
-    <div className="relative w-52">
+    <div className="relative w-40">
         <SimpleInput
             className={`my-2 w-full font-mono ${(disabled ? 'cursor-not-allowed placeholder-theme-body text-theme-body' : '')}`}
             fontSizeClassName="text-2xl"
@@ -105,8 +105,8 @@ const ValueUnitDisplay: React.FC<NumberUnitDisplayProps> = ({ value, padTo, unit
 
     return (
         <span className="flex items-center">
-            <span className="flex justify-end pr-2 w-20 text-2xl">
-                <span className="text-2xl text-gray-400">{'0'.repeat(leadingZeroCount)}</span>
+            <span className="flex justify-end pr-2 text-2xl">
+                <span className="text-2xl text-gray-600">{'0'.repeat(leadingZeroCount)}</span>
                 {fixedValue}
             </span>
             {' '}
@@ -131,7 +131,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
 }) => {
     const [TOTAL_FUEL_GALLONS] = useState(85471.7); // 323545.6 litres
     const [FUEL_GALLONS_TO_KG] = useState(3.039075693483925);
-    const [TOTAL_FUEL_KG] = useState(TOTAL_FUEL_GALLONS * FUEL_GALLONS_TO_KG);
+    const [TOTAL_MAX_FUEL_KG] = useState(TOTAL_FUEL_GALLONS * FUEL_GALLONS_TO_KG);
 
     const [eng1Running] = useSimVar('ENG COMBUSTION:1', 'Bool', 1_000);
     const [eng4Running] = useSimVar('ENG COMBUSTION:4', 'Bool', 1_000);
@@ -159,7 +159,11 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [totalFuelWeightKg] = useSimVar('FUEL TOTAL QUANTITY WEIGHT', 'Kilograms', 500); // 6260.3
 
     // TODO: Remove debug override
-    const [_refuelStartedByUser, setRefuelStartedByUser] = useSimVar('L:A32NX_REFUEL_STARTED_BY_USR', 'Bool');
+
+    // TODO: Remove
+    const [fuelDesiredPercent, setFuelDesiredPercent] = useSimVar('L:A32NX_FUEL_DESIRED_PERCENT', 'Number');
+    const [fuelDesired, setFuelDesired] = useSimVar('L:A32NX_FUEL_DESIRED', 'Kilograms');
+    const [refuelStartedByUser, setRefuelStartedByUser] = useSimVar('L:A32NX_REFUEL_STARTED_BY_USR', 'Bool');
 
     // Simbrief
     const [showSimbriefButton, setShowSimbriefButton] = useState(false);
@@ -207,7 +211,13 @@ export const A380Fuel: React.FC<FuelProps> = ({
         return true;
     };
 
-    const setDesiredFuelWeight = useCallback((fuelWeightKg: number) => {
+    const formatFuelFilling = (curr: number, max: number) => {
+        const percent = (Math.max(curr, 0) / max) * 100;
+        return `linear-gradient(to top, var(--color-highlight) ${percent}%,#ffffff00 0%)`;
+    };
+
+    // TODO: Replace with proper FQMS system (in rust systems)
+    const calculateDesiredFuelKg = useCallback((fuelWeightKg: number) => {
         let fuelWeightRemaining = fuelWeightKg;
         fuelWeightRemaining -= OUTER_FEED_MAX_KG * 4;
         const feed = Math.max(((OUTER_FEED_MAX_KG) + Math.min(fuelWeightRemaining, 0) / 4), 0) / FUEL_GALLONS_TO_KG;
@@ -224,37 +234,52 @@ export const A380Fuel: React.FC<FuelProps> = ({
         setFeedTwo(feed + innerFeed);
         setFeedThree(feed + innerFeed);
 
+        fuelWeightRemaining -= TRIM_TANK_MAX_KG;
+
+        const trimTank = Math.max((TRIM_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0)), 0) / FUEL_GALLONS_TO_KG;
+        setTrim(trimTank);
+
         fuelWeightRemaining -= INNER_TANK_MAX_KG * 2;
 
-        const innerTank = Math.max(((INNER_TANK_MAX_KG) + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
+        const innerTank = Math.max((INNER_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
         setLeftInner(innerTank);
         setRightInner(innerTank);
 
         fuelWeightRemaining -= MID_TANK_MAX_KG * 2;
 
-        const midTank = Math.max(((MID_TANK_MAX_KG) + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
+        const midTank = Math.max((MID_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
         setLeftMid(midTank);
         setRightMid(midTank);
 
         fuelWeightRemaining -= OUTER_TANK_MAX_KG * 2;
 
-        const outerTank = Math.max(((OUTER_TANK_MAX_KG) + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
+        const outerTank = Math.max((OUTER_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
         setLeftOuter(outerTank);
         setRightOuter(outerTank);
-
-        setTrim(Math.min(Math.max(fuelWeightRemaining / FUEL_GALLONS_TO_KG, 0), TRIM_TANK_MAX_KG));
     }, []);
 
     const updateDesiredFuel = (desiredFuelKg: string) => {
         let fuelWeightKg = 0;
         if (desiredFuelKg.length > 0) {
             fuelWeightKg = parseInt(desiredFuelKg);
-            if (fuelWeightKg > TOTAL_FUEL_KG) {
-                fuelWeightKg = round(TOTAL_FUEL_KG);
+            if (fuelWeightKg > TOTAL_MAX_FUEL_KG) {
+                fuelWeightKg = round(TOTAL_MAX_FUEL_KG);
             }
             // setInputValue(fuelWeightKg);
         }
-        setDesiredFuelWeight(fuelWeightKg);
+        // TODO: Remove
+        setFuelDesiredPercent((fuelWeightKg / TOTAL_MAX_FUEL_KG) * 100);
+        calculateDesiredFuelKg(fuelWeightKg);
+    };
+
+    // TODO: Remove
+    const updateDesiredFuelPercent = (percent: number) => {
+        if (percent < 0.5) {
+            percent = 0;
+        }
+        setFuelDesiredPercent(percent);
+        const fuel = Math.round(TOTAL_MAX_FUEL_KG * (percent / 100));
+        updateDesiredFuel(fuel.toString());
     };
 
     /*
@@ -359,359 +384,336 @@ export const A380Fuel: React.FC<FuelProps> = ({
 
     const roundUpNearest100 = (plannedFuel: number) => Math.ceil(plannedFuel / 100) * 100;
 
+    useEffect(() => {
+        setFuelDesiredPercent((totalFuelWeightKg / TOTAL_MAX_FUEL_KG) * 100);
+    }, [totalFuelWeightKg]);
+
     return (
-        <div className="flex flex-row justify-between px-4">
-            <div className="flex flex-row w-full">
-                <Card className="w-full col-1" childrenContainerClassName={`w-full ${simbriefDataLoaded ? 'rounded-r-none' : ''}`}>
-                    <table className="w-full table-fixed">
-                        <thead className="px-8 mx-2 w-full border-b">
-                            <tr className="py-2">
-                                <th scope="col" className="py-2 px-4 w-1/5 font-medium text-left text-md">
-                                    {'!!! TEMPORARY WIP !!! '}
-                                </th>
-                                <th scope="col" className="py-2 px-4 w-2/5 font-medium text-left text-md">
-                                    {t('Ground.Payload.Planned')}
-                                </th>
-                                <th scope="col" className="py-2 px-4 w-2/5 font-medium text-left text-md">
-                                    {t('Ground.Payload.Current')}
-                                </th>
-                            </tr>
-                        </thead>
+        <div className="flex relative flex-col justify-center">
+            <div className="flex relative flex-row justify-between w-full h-content-section-reduced">
+                <Card className="flex absolute top-6 left-0 w-fit" childrenContainerClassName={`w-full ${simbriefDataLoaded ? 'rounded-r-none' : ''}`}>
+                    <table className="table-fixed">
                         <tbody>
-                            <tr className="h-2" />
                             <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
+                                <td className="px-2 font-light whitespace-nowrap text-md">
                                     Feed One
                                 </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(OUTER_FEED_MAX_KG))}
-                                            value={Units.kilogramToUser(feedOneGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setFeedOne(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={feedOneGal * FUEL_GALLONS_TO_KG / OUTER_FEED_MAX_KG * 100}
+                                    />
                                 </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(feedOneGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
                                 </td>
                             </tr>
                             <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
+                                <td className="px-2 font-light whitespace-nowrap text-md">
                                     Feed Two
                                 </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(INNER_FEED_MAX_KG))}
-                                            value={Units.kilogramToUser(feedTwoGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setFeedTwo(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={feedTwoGal * FUEL_GALLONS_TO_KG / INNER_FEED_MAX_KG * 100}
+                                    />
                                 </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(feedTwoGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
                                 </td>
                             </tr>
                             <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Feed Three
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(INNER_FEED_MAX_KG))}
-                                            value={Units.kilogramToUser(feedThreeGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setFeedThree(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(feedThreeGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Feed Four
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(OUTER_FEED_MAX_KG))}
-                                            value={Units.kilogramToUser(feedFourGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setFeedFour(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(feedFourGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
+                                <td className="px-2 font-light whitespace-nowrap text-md">
                                     Left Inner
                                 </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(INNER_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(leftInnerGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setLeftInner(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={leftInnerGal * FUEL_GALLONS_TO_KG / INNER_TANK_MAX_KG * 100}
+                                    />
                                 </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(leftInnerGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
                                 </td>
                             </tr>
                             <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Right Inner
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(INNER_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(rightInnerGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setRightInner(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(rightInnerGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
+                                <td className="px-2 font-light whitespace-nowrap text-md">
                                     Left Mid
                                 </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(MID_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(leftMidGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setLeftMid(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={leftMidGal * FUEL_GALLONS_TO_KG / MID_TANK_MAX_KG * 100}
+                                    />
                                 </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(leftMidGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
                                 </td>
                             </tr>
                             <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Right Mid
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(MID_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(rightMidGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setRightMid(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(rightMidGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
+                                <td className="px-2 font-light whitespace-nowrap text-md">
                                     Left Outer
                                 </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(OUTER_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(leftOuterGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setLeftOuter(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={leftOuterGal * FUEL_GALLONS_TO_KG / OUTER_TANK_MAX_KG * 100}
+                                    />
                                 </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
                                     <ValueUnitDisplay value={Units.kilogramToUser(leftOuterGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Right Outer
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(OUTER_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(rightOuterGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setRightOuter(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(rightOuterGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Trim
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(TRIM_TANK_MAX_KG))}
-                                            value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setTrim(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                </td>
-                            </tr>
-                            <tr>
-                                <td className="px-4 font-light whitespace-nowrap text-md">
-                                    Total Fuel
-                                </td>
-                                <td className="mx-8">
-                                    <div className={`px-4 font-light whitespace-nowrap text-md ${(gsxFuelSyncEnabled /* && boardingStarted */) ? 'pointer-events-none' : ''}`}>
-                                        <ValueSimbriefInput
-                                            min={0}
-                                            max={Math.ceil(Units.kilogramToUser(TOTAL_FUEL_KG))}
-                                            value={Units.kilogramToUser(totalFuelWeightKg)}
-                                            onBlur={(x) => {
-                                                if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                                    setDesiredFuelWeight(Units.userToKilogram(parseInt(x)));
-                                                    // TODO: Remove placeholder refueling setting
-                                                    setRefuelStartedByUser(true);
-                                                    setRefuelRate('2');
-                                                }
-                                            }}
-                                            unit={massUnitForDisplay}
-                                            showSimbriefButton={showSimbriefButton}
-                                            onClickSync={handleSimbriefFuelSync}
-                                            disabled={gsxFuelSyncEnabled === 1}
-                                        />
-                                    </div>
-                                </td>
-                                <td className="px-4 w-20 font-mono font-light whitespace-nowrap text-md">
-                                    <ValueUnitDisplay value={Units.kilogramToUser(totalFuelWeightKg)} padTo={6} unit={massUnitForDisplay} />
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </Card>
+                <Card className="flex absolute top-6 right-0 w-fit" childrenContainerClassName={`w-full ${simbriefDataLoaded ? 'rounded-r-none' : ''}`}>
+                    <table className="table-fixed">
+                        <tbody>
+                            <tr>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    Feed Three
+                                </td>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={feedThreeGal * FUEL_GALLONS_TO_KG / INNER_FEED_MAX_KG * 100}
+                                    />
+                                </td>
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
+                                    <ValueUnitDisplay value={Units.kilogramToUser(feedThreeGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    Feed Four
+                                </td>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={feedFourGal * FUEL_GALLONS_TO_KG / OUTER_FEED_MAX_KG * 100}
+                                    />
+                                </td>
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
+                                    <ValueUnitDisplay value={Units.kilogramToUser(feedFourGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    Right Inner
+                                </td>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={rightInnerGal * FUEL_GALLONS_TO_KG / INNER_TANK_MAX_KG * 100}
+                                    />
+                                </td>
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
+                                    <ValueUnitDisplay value={Units.kilogramToUser(rightInnerGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    Right Mid
+                                </td>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={rightMidGal * FUEL_GALLONS_TO_KG / MID_TANK_MAX_KG * 100}
+                                    />
+                                </td>
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
+                                    <ValueUnitDisplay value={Units.kilogramToUser(rightMidGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
+                                </td>
+                            </tr>
+                            <tr>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    Right Outer
+                                </td>
+                                <td className="px-2 font-light whitespace-nowrap text-md">
+                                    <ProgressBar
+                                        height="10px"
+                                        width="80px"
+                                        displayBar={false}
+                                        completedBarBegin={100}
+                                        isLabelVisible={false}
+                                        bgcolor="var(--color-highlight)"
+                                        completed={rightOuterGal * FUEL_GALLONS_TO_KG / OUTER_TANK_MAX_KG * 100}
+                                    />
+                                </td>
+                                <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
+                                    <ValueUnitDisplay value={Units.kilogramToUser(rightOuterGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </Card>
+                <A380FuelOutline
+                    className="flex absolute inset-x-0 top-20 right-4 mx-auto w-full h-full text-theme-text"
+                    feed1Percent={(Math.max(feedThreeGal * FUEL_GALLONS_TO_KG, 0) / OUTER_FEED_MAX_KG) * 100}
+                    feed2Percent={(Math.max(feedThreeGal * FUEL_GALLONS_TO_KG, 0) / INNER_FEED_MAX_KG) * 100}
+                    feed3Percent={(Math.max(feedThreeGal * FUEL_GALLONS_TO_KG, 0) / INNER_FEED_MAX_KG) * 100}
+                    feed4Percent={(Math.max(feedThreeGal * FUEL_GALLONS_TO_KG, 0) / OUTER_FEED_MAX_KG) * 100}
+                    leftInnerPercent={(Math.max(leftInnerGal * FUEL_GALLONS_TO_KG, 0) / INNER_TANK_MAX_KG) * 100}
+                    leftMidPercent={(Math.max(leftMidGal * FUEL_GALLONS_TO_KG, 0) / MID_TANK_MAX_KG) * 100}
+                    leftOuterPercent={(Math.max(leftOuterGal * FUEL_GALLONS_TO_KG, 0) / OUTER_TANK_MAX_KG) * 100}
+                    rightInnerPercent={(Math.max(rightInnerGal * FUEL_GALLONS_TO_KG, 0) / INNER_TANK_MAX_KG) * 100}
+                    rightMidPercent={(Math.max(rightMidGal * FUEL_GALLONS_TO_KG, 0) / MID_TANK_MAX_KG) * 100}
+                    rightOuterPercent={(Math.max(rightOuterGal * FUEL_GALLONS_TO_KG, 0) / OUTER_TANK_MAX_KG) * 100}
+                    trimPercent={(Math.max(trimGal * FUEL_GALLONS_TO_KG, 0) / TRIM_TANK_MAX_KG) * 100}
+                />
+            </div>
+
+            <Card className="flex absolute bottom-40 left-20" childrenContainerClassName={`w-full ${simbriefDataLoaded ? 'rounded-r-none' : ''}`}>
+                <table className="table-fixed">
+                    <tbody>
+                        <tr>
+                            <td className="px-2 font-light whitespace-nowrap text-md">
+                                Trim
+                            </td>
+                            <td className="px-2 font-light whitespace-nowrap text-md">
+                                <ProgressBar
+                                    height="10px"
+                                    width="80px"
+                                    displayBar={false}
+                                    completedBarBegin={100}
+                                    isLabelVisible={false}
+                                    bgcolor="var(--color-highlight)"
+                                    completed={trimGal * FUEL_GALLONS_TO_KG / TRIM_TANK_MAX_KG * 100}
+                                />
+                            </td>
+                            <td className="px-2 my-2 font-mono font-light whitespace-nowrap text-md">
+                                <ValueInput
+                                    min={0}
+                                    max={Math.ceil(Units.kilogramToUser(TRIM_TANK_MAX_KG))}
+                                    value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)}
+                                    onBlur={(x) => {
+                                        if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
+                                            setTrim(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
+                                            // TODO: Remove placeholder refueling setting
+                                            setRefuelStartedByUser(true);
+                                            setRefuelRate('2');
+                                        }
+                                    }}
+                                    unit={massUnitForDisplay}
+                                />
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </Card>
+
+            <div className="flex overflow-x-hidden absolute bottom-0 left-0 z-10 flex-row max-w-3xl rounded-2xl border border-theme-accentborder-2">
+                <div className="py-3 px-5 space-y-4">
+                    <div className="flex flex-row justify-between items-center">
+                        <div className="flex flex-row items-center space-x-3">
+                            <h2 className="font-medium">{t('Ground.Fuel.Refuel')}</h2>
+                            <p className="text-theme-accent" />
+                        </div>
+                        <p>{`${t('Ground.Fuel.EstimatedDuration')}: 0`}</p>
+                    </div>
+                    <div className="flex flex-row items-center space-x-6">
+                        <Slider
+                            style={{ width: '28rem' }}
+                            value={fuelDesiredPercent}
+                            onChange={updateDesiredFuelPercent}
+                        />
+                        <div className="flex flex-row">
+                            <ValueSimbriefInput
+                                min={0}
+                                max={Math.ceil(Units.kilogramToUser(TOTAL_MAX_FUEL_KG))}
+                                value={Units.kilogramToUser(totalFuelWeightKg)}
+                                onBlur={(x) => {
+                                    if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
+                                        calculateDesiredFuelKg(Units.userToKilogram(parseInt(x)));
+                                        // TODO: Remove placeholder refueling setting
+                                        setRefuelStartedByUser(true);
+                                        setRefuelRate('2');
+                                    }
+                                }}
+                                unit={massUnitForDisplay}
+                                showSimbriefButton={showSimbriefButton}
+                                onClickSync={handleSimbriefFuelSync}
+                                disabled={gsxFuelSyncEnabled === 1}
+                            />
+                        </div>
+                    </div>
+                </div>
+                {/*
+                    <div
+                        className="flex justify-center items-center w-20 bg-current text-theme-accent"
+                        onClick={() => null switchRefuelState()}
+                    >
+                        <div className={`${airplaneCanRefuel() ? 'text-white' : 'text-theme-unselected'}`}>
+                            <PlayFill size={50} className={refuelStartedByUser ? 'hidden' : ''} />
+                            <StopCircleFill size={50} className={refuelStartedByUser ? '' : 'hidden'} />
+                        </div>
+                    </div>
+                */}
+            </div>
+
+            <div className="flex overflow-x-hidden absolute right-6 bottom-0 flex-col justify-center items-center py-3 px-6 space-y-2 rounded-2xl border border-theme-accent">
+                <h2 className="flex font-medium">{t('Ground.Fuel.RefuelTime')}</h2>
+                <SelectGroup>
+                    <SelectItem selected={airplaneCanRefuel() ? refuelRate === '2' : !airplaneCanRefuel()} onSelect={() => setRefuelRate('2')}>{t('Settings.Instant')}</SelectItem>
+
+                    <TooltipWrapper text={`${!airplaneCanRefuel() && t('Ground.Fuel.TT.AircraftMustBeColdAndDarkToChangeRefuelTimes')}`}>
+                        <div>
+                            <SelectItem className={`${!airplaneCanRefuel() && 'opacity-20'}`} disabled={!airplaneCanRefuel()} selected={refuelRate === '1'} onSelect={() => setRefuelRate('1')}>{t('Settings.Fast')}</SelectItem>
+                        </div>
+                    </TooltipWrapper>
+
+                    <TooltipWrapper text={`${!airplaneCanRefuel() && t('Ground.Fuel.TT.AircraftMustBeColdAndDarkToChangeRefuelTimes')}`}>
+                        <div>
+                            <SelectItem className={`${!airplaneCanRefuel() && 'opacity-20'}`} disabled={!airplaneCanRefuel()} selected={refuelRate === '0'} onSelect={() => setRefuelRate('0')}>{t('Settings.Real')}</SelectItem>
+                        </div>
+                    </TooltipWrapper>
+                </SelectGroup>
             </div>
         </div>
     );
