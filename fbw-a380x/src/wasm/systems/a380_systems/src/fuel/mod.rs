@@ -1,5 +1,7 @@
 // Note: Fuel system for now is still handled in MSFS. This is used for calculating fuel-related factors.
 
+mod fuel_quantity_management_system;
+use fuel_quantity_management_system::FuelQuantityManagementSystem;
 use nalgebra::Vector3;
 use systems::{
     fuel::{FuelCG, FuelInfo, FuelPayload, FuelSystem, FuelTank},
@@ -40,6 +42,7 @@ pub enum A380FuelTankType {
 
 pub struct A380Fuel {
     fuel_system: FuelSystem<11>,
+    fuel_quantity_management_system: FuelQuantityManagementSystem,
 }
 
 impl A380Fuel {
@@ -111,7 +114,13 @@ impl A380Fuel {
         });
         A380Fuel {
             fuel_system: FuelSystem::new(context, fuel_tanks),
+            fuel_quantity_management_system: FuelQuantityManagementSystem::new(),
         }
+    }
+
+    pub(crate) fn update(&mut self) {
+        self.fuel_quantity_management_system
+            .update(&mut self.fuel_system)
     }
 
     fn left_outer_tank_has_fuel(&self) -> bool {
@@ -237,6 +246,7 @@ impl FuelCG for A380Fuel {
 impl SimulationElement for A380Fuel {
     fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
         self.fuel_system.accept(visitor);
+        self.fuel_quantity_management_system.accept(visitor);
         visitor.visit(self);
     }
 }

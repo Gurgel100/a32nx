@@ -137,12 +137,32 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [eng4Running] = useSimVar('ENG COMBUSTION:4', 'Bool', 1_000);
     const [refuelRate, setRefuelRate] = usePersistentProperty('REFUEL_RATE_SETTING');
 
-    const [INNER_FEED_MAX_KG] = useState(7753.2 * FUEL_GALLONS_TO_KG);
-    const [OUTER_FEED_MAX_KG] = useState(7299.6 * FUEL_GALLONS_TO_KG);
-    const [INNER_TANK_MAX_KG] = useState(12189.4 * FUEL_GALLONS_TO_KG);
-    const [MID_TANK_MAX_KG] = useState(9632 * FUEL_GALLONS_TO_KG);
-    const [OUTER_TANK_MAX_KG] = useState(2731.5 * FUEL_GALLONS_TO_KG);
-    const [TRIM_TANK_MAX_KG] = useState(6260.3 * FUEL_GALLONS_TO_KG);
+    const [INNER_FEED_MAX_KG] = useState(7753.2 * FUEL_GALLONS_TO_KG); // 23562.51 kg - 47053.02
+    const [OUTER_FEED_MAX_KG] = useState(7299.6 * FUEL_GALLONS_TO_KG); // 22189.04 kg - 44378.08
+    const [INNER_TANK_MAX_KG] = useState(12189.4 * FUEL_GALLONS_TO_KG); // 37044.51 kg
+    const [MID_TANK_MAX_KG] = useState(9632 * FUEL_GALLONS_TO_KG); // 29299.51 kg
+    const [OUTER_TANK_MAX_KG] = useState(2731.5 * FUEL_GALLONS_TO_KG); // 8299.51 kg
+    const [TRIM_TANK_MAX_KG] = useState(6260.3 * FUEL_GALLONS_TO_KG); // 18999.51 kg
+
+    const [POINT_A_KG] = useState(18000);
+    const [POINT_B_KG] = useState(26000);
+    const [POINT_C_KG] = useState(36000);
+    const [POINT_D_KG] = useState(47000);
+    const [POINT_E_KG] = useState(103788);
+    const [POINT_F_KG] = useState(158042);
+    const [POINT_G_KG] = useState(215702);
+    const [POINT_H_KG] = useState(223028);
+
+    const [FEED_A_KG] = useState(4500);
+    const [FEED_C_KG] = useState(7000);
+    const [OUTER_FEED_E_KG] = useState(20558);
+    const [INNER_FEED_E_KG] = useState(21836);
+
+    const [OUTER_TANK_B_KG] = useState(4000);
+    const [OUTER_TANK_H_KG] = useState(7693);
+    const [MID_TANK_F_KG] = useState(27127);
+    const [INNER_TANK_D_KG] = useState(5500);
+    const [INNER_TANK_G_KG] = useState(34300);
 
     // TODO: Remove and implement proper fueling logic with fueling backend in rust (do not use A32NX_Refuel.js!!!)
     const [leftOuterGal, setLeftOuter] = useSimVar('FUELSYSTEM TANK QUANTITY:1', 'Gallons', 2_000); // 2731.5
@@ -218,44 +238,126 @@ export const A380Fuel: React.FC<FuelProps> = ({
 
     // TODO: Replace with proper FQMS system (in rust systems)
     const calculateDesiredFuelKg = useCallback((fuelWeightKg: number) => {
-        let fuelWeightRemaining = fuelWeightKg;
-        fuelWeightRemaining -= OUTER_FEED_MAX_KG * 4;
-        const feed = Math.max(((OUTER_FEED_MAX_KG) + Math.min(fuelWeightRemaining, 0) / 4), 0) / FUEL_GALLONS_TO_KG;
+        let wingKg = 0;
+        let trimKg = 0;
+        // Temporary code
+        if (fuelWeightKg <= POINT_E_KG) {
+            wingKg = fuelWeightKg;
+        } else if (fuelWeightKg <= POINT_F_KG) {
+            trimKg = Math.min(4000, fuelWeightKg - POINT_E_KG);
+        } else if (fuelWeightKg <= POINT_H_KG) {
+            trimKg = Math.max(Math.min(8000, fuelWeightKg - POINT_G_KG), 4000);
+        } else {
+            trimKg = Math.max(Math.min(TRIM_TANK_MAX_KG, fuelWeightKg - POINT_H_KG), 8000);
+        }
+        setTrim(trimKg / FUEL_GALLONS_TO_KG);
 
-        setFeedOne(feed);
-        setFeedTwo(feed);
-        setFeedThree(feed);
-        setFeedFour(feed);
+        wingKg = fuelWeightKg - trimKg;
 
-        const deltaFeed = (INNER_FEED_MAX_KG - OUTER_FEED_MAX_KG);
-        fuelWeightRemaining -= deltaFeed * 2;
+        let outerFeedKg = 0;
+        let innerFeedKg = 0;
+        let outerTankKg = 0;
+        let midTankKg = 0;
+        let innerTankKg = 0;
+        if (wingKg <= POINT_A_KG) {
+            outerFeedKg = (wingKg / 4);
+            innerFeedKg = (wingKg / 4);
+        } else if (wingKg <= POINT_B_KG) {
+            outerFeedKg = FEED_A_KG;
+            innerFeedKg = FEED_A_KG;
+            outerTankKg = (wingKg - POINT_A_KG) / 2;
+        } else if (wingKg <= POINT_C_KG) {
+            outerFeedKg = FEED_A_KG + (wingKg - POINT_B_KG) / 4;
+            innerFeedKg = FEED_A_KG + (wingKg - POINT_B_KG) / 4;
+            outerTankKg = OUTER_TANK_B_KG;
+        } else if (wingKg <= POINT_D_KG) {
+            outerFeedKg = FEED_C_KG;
+            innerFeedKg = FEED_C_KG;
+            outerTankKg = OUTER_TANK_B_KG;
+            innerTankKg = (wingKg - POINT_C_KG) / 2;
+        } else if (wingKg <= POINT_E_KG) {
+            const totalFeedE = (OUTER_FEED_E_KG * 2 + INNER_FEED_E_KG * 2);
+            outerFeedKg = FEED_C_KG + (wingKg - POINT_D_KG) * (OUTER_FEED_E_KG / totalFeedE);
+            innerFeedKg = FEED_C_KG + (wingKg - POINT_D_KG) * (INNER_FEED_E_KG / totalFeedE);
+            outerTankKg = OUTER_TANK_B_KG;
+            innerTankKg = INNER_TANK_D_KG;
+        } else if (wingKg <= POINT_F_KG) {
+            outerFeedKg = OUTER_FEED_E_KG;
+            innerFeedKg = INNER_FEED_E_KG;
+            outerTankKg = OUTER_TANK_B_KG;
+            innerTankKg = INNER_TANK_D_KG;
+            midTankKg = (wingKg - POINT_E_KG) / 2;
+        } else if (wingKg <= POINT_G_KG) {
+            outerFeedKg = OUTER_FEED_E_KG;
+            innerFeedKg = INNER_FEED_E_KG;
+            outerTankKg = OUTER_TANK_B_KG;
+            innerTankKg = INNER_TANK_D_KG + (wingKg - POINT_F_KG) / 2;
+            midTankKg = MID_TANK_F_KG;
+        } else if (wingKg <= POINT_H_KG) {
+            outerFeedKg = OUTER_FEED_E_KG;
+            innerFeedKg = INNER_FEED_E_KG;
+            outerTankKg = OUTER_TANK_B_KG + (wingKg - POINT_G_KG) / 2;
+            innerTankKg = INNER_TANK_G_KG;
+            midTankKg = MID_TANK_F_KG;
+        } else {
+            outerFeedKg = OUTER_FEED_E_KG + (wingKg - POINT_H_KG) / 10;
+            innerFeedKg = INNER_FEED_E_KG + (wingKg - POINT_H_KG) / 10;
+            outerTankKg = OUTER_TANK_H_KG + (wingKg - POINT_H_KG) / 10;
+            innerTankKg = INNER_TANK_G_KG + (wingKg - POINT_H_KG) / 10;
+            midTankKg = MID_TANK_F_KG + (wingKg - POINT_H_KG) / 10;
+        }
 
-        const innerFeed = Math.max((deltaFeed + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
-        setFeedTwo(feed + innerFeed);
-        setFeedThree(feed + innerFeed);
+        setFeedOne(outerFeedKg / FUEL_GALLONS_TO_KG);
+        setFeedFour(outerFeedKg / FUEL_GALLONS_TO_KG);
+        setFeedTwo(innerFeedKg / FUEL_GALLONS_TO_KG);
+        setFeedThree(innerFeedKg / FUEL_GALLONS_TO_KG);
+        setLeftOuter(outerTankKg / FUEL_GALLONS_TO_KG);
+        setRightOuter(outerTankKg / FUEL_GALLONS_TO_KG);
+        setLeftInner(innerTankKg / FUEL_GALLONS_TO_KG);
+        setRightInner(innerTankKg / FUEL_GALLONS_TO_KG);
+        setLeftMid(midTankKg / FUEL_GALLONS_TO_KG);
+        setRightMid(midTankKg / FUEL_GALLONS_TO_KG);
 
-        fuelWeightRemaining -= TRIM_TANK_MAX_KG;
+        /*
+        Feed 1+4 Tanks
+        F14 = (WT / 4) if WT <= [Point A]
+        F14 = [Outer Feed Mark A] if [Point B] >= WT > [Point A]
+        F14 = [Outer Feed Mark A] + (WT - [Point B]) / 4 if [Point C] >= WT > [Point B]
+        F14 = [Outer Feed Mark C] if [Point D] >= WT > [Point C]
+        F14 = [Outer Feed Mark C] + (WT - [Point D]) * ([Outer Feed Mark E]/([Outer Feed Mark E] * 2 + [Inner Feed Mark E] * 2)) if [Point E] >= WT > [Point D]
+        F14 = [Outer Feed Mark E] if [Point H] >= WT > [Point E]
+        F14 = [Outer Feed Mark E] + (WT - [Point H]) / 10 if WT > [Point H]
 
-        const trimTank = Math.max((TRIM_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0)), 0) / FUEL_GALLONS_TO_KG;
-        setTrim(trimTank);
+        Feed 2+3 Tanks
+        F23 = (WT / 4) if WT <= [Point A]
+        F23 = [Inner Feed Mark A] if [Point B] >= WT > [Point A]
+        F23 = [Inner Feed Mark A] + (WT - [Point B]) / 4 if [Point C] >= WT > [Point B]
+        F23 = [Inner Feed Mark C] if [Point D] >= WT > [Point C]
+        F23 = [Inner Feed Mark C] + (WT - [Point D]) * ([Inner Feed Mark E]/([Outer Feed Mark E] * 2 + [Inner Feed Mark E] * 2)) if [Point E] >= WT > [Point D]
+        F23 = [Inner Feed Mark E] if [Point H] >= WT > [Point E]
+        F23 = [Inner Feed Mark E] + (WT - [Point H]) / 10 if WT > [Point H]
 
-        fuelWeightRemaining -= INNER_TANK_MAX_KG * 2;
+        Outer Tanks
+        O = 0 if WT < [Point A]
+        O = (WT - [Point A]) / 2 if [Point B] >= WT >= [Point A]
+        O = [Outer Tank Mark B] if [Point G] >= WT > [Point B]
+        O = [Outer Tank Mark B] + (WT - [Point G]) / 2 if [Point H] >= WT > [Point G]
+        O = [Outer Tank Mark H] + (WT - [Point H]) / 10 if WT > [Point H]
 
-        const innerTank = Math.max((INNER_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
-        setLeftInner(innerTank);
-        setRightInner(innerTank);
+        Mid Tanks
+        M = 0 if WT < [Point E]
+        M = (WT - [Point E]) / 2 if [Point F] >= WT >= [Point E]
+        M = [Mid Tank Mark F] if [Point H] >= WT > [Point F]
+        M = [Mid Tank Mark F] + (WT - [Point H]) / 10 if WT > [Point H]
 
-        fuelWeightRemaining -= MID_TANK_MAX_KG * 2;
-
-        const midTank = Math.max((MID_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
-        setLeftMid(midTank);
-        setRightMid(midTank);
-
-        fuelWeightRemaining -= OUTER_TANK_MAX_KG * 2;
-
-        const outerTank = Math.max((OUTER_TANK_MAX_KG + Math.min(fuelWeightRemaining, 0) / 2), 0) / FUEL_GALLONS_TO_KG;
-        setLeftOuter(outerTank);
-        setRightOuter(outerTank);
+        Inner Tanks
+        I = 0 if WT < [Point C]
+        I = (WT - [Point C]) / 2 if [Point D] >= WT >=  [Point C]
+        I = [Inner Tank Mark D] if [Point F] >= WT > [Point D]
+        I = [Inner Tank Mark D] + (WT - [Point F]) / 2 if [Point G] >= WT > [Point F]
+        I = [Inner Tank Mark G] if [Point H] >= WT > [Point G]
+        I = [Inner Tank Mark G] + (WT - [Point H]) / 10 if WT > [Point H]
+        */
     }, []);
 
     const updateDesiredFuel = (desiredFuelKg: string) => {
