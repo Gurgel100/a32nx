@@ -144,45 +144,52 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [OUTER_TANK_MAX_KG] = useState(2731.5 * FUEL_GALLONS_TO_KG); // 8299.51 kg
     const [TRIM_TANK_MAX_KG] = useState(6260.3 * FUEL_GALLONS_TO_KG); // 18999.51 kg
 
-    const [POINT_A_KG] = useState(18000);
-    const [POINT_B_KG] = useState(26000);
-    const [POINT_C_KG] = useState(36000);
-    const [POINT_D_KG] = useState(47000);
-    const [POINT_E_KG] = useState(103788);
-    const [POINT_F_KG] = useState(158042);
-    const [POINT_G_KG] = useState(215702);
-    const [POINT_H_KG] = useState(223028);
+    /**
+     *
+    TODO: Replace placeholder trim tank code with desired ZFW CG to trim tank based on manual refueling tables
+    const [zfw] = useSimVar('L:A32NX_AIRFRAME_ZFW', 'number', 1_553);
+    const [zfwDesired] = useSimVar('L:A32NX_AIRFRAME_ZFW_DESIRED', 'number', 1_621);
+    const [gw] = useSimVar('L:A32NX_AIRFRAME_GW', 'number', 1_741);
+    const [gwDesired] = useSimVar('L:A32NX_AIRFRAME_GW_DESIRED', 'number', 1_787);
 
-    const [FEED_A_KG] = useState(4500);
-    const [FEED_C_KG] = useState(7000);
-    const [OUTER_FEED_E_KG] = useState(20558);
-    const [INNER_FEED_E_KG] = useState(21836);
-
-    const [OUTER_TANK_B_KG] = useState(4000);
-    const [OUTER_TANK_H_KG] = useState(7693);
-    const [MID_TANK_F_KG] = useState(27127);
-    const [INNER_TANK_D_KG] = useState(5500);
-    const [INNER_TANK_G_KG] = useState(34300);
+    // CG MAC
+    const [zfwCgMac] = useSimVar('L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC', 'number', 1_223);
+    const [desiredZfwCgMac] = useSimVar('L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC_DESIRED', 'number', 1_279);
+    const [gwCgMac] = useSimVar('L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC', 'number', 1_301);
+    const [desiredGwCgMac] = useSimVar('L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC_DESIRED', 'number', 1_447);
+     */
 
     // TODO: Remove and implement proper fueling logic with fueling backend in rust (do not use A32NX_Refuel.js!!!)
-    const [leftOuterGal, setLeftOuter] = useSimVar('FUELSYSTEM TANK QUANTITY:1', 'Gallons', 2_000); // 2731.5
-    const [feedOneGal, setFeedOne] = useSimVar('FUELSYSTEM TANK QUANTITY:2', 'Gallons', 2_000); //  7299.6
-    const [leftMidGal, setLeftMid] = useSimVar('FUELSYSTEM TANK QUANTITY:3', 'Gallons', 2_000); // 9632
-    const [leftInnerGal, setLeftInner] = useSimVar('FUELSYSTEM TANK QUANTITY:4', 'Gallons', 2_000); // 12189.4
-    const [feedTwoGal, setFeedTwo] = useSimVar('FUELSYSTEM TANK QUANTITY:5', 'Gallons', 2_000); // 7753.2
-    const [feedThreeGal, setFeedThree] = useSimVar('FUELSYSTEM TANK QUANTITY:6', 'Gallons', 2_000); // 7753.2
-    const [rightInnerGal, setRightInner] = useSimVar('FUELSYSTEM TANK QUANTITY:7', 'Gallons', 2_000); // 12189.4
-    const [rightMidGal, setRightMid] = useSimVar('FUELSYSTEM TANK QUANTITY:8', 'Gallons', 2_000); // 9632
-    const [feedFourGal, setFeedFour] = useSimVar('FUELSYSTEM TANK QUANTITY:9', 'Gallons', 2_000); // 7299.6
-    const [rightOuterGal, setRightOuter] = useSimVar('FUELSYSTEM TANK QUANTITY:10', 'Gallons', 2_000); // 2731.5
-    const [trimGal, setTrim] = useSimVar('FUELSYSTEM TANK QUANTITY:11', 'Gallons', 2_000); // 6260.3
-    const [totalFuelWeightKg] = useSimVar('FUEL TOTAL QUANTITY WEIGHT', 'Kilograms', 500); // 6260.3
+    const [leftOuterGal] = useSimVar('FUELSYSTEM TANK QUANTITY:1', 'Gallons', 1_553); // 2731.5
+    const [feedOneGal] = useSimVar('FUELSYSTEM TANK QUANTITY:2', 'Gallons', 1_621); //  7299.6
+    const [leftMidGal] = useSimVar('FUELSYSTEM TANK QUANTITY:3', 'Gallons', 1_553); // 9632
+    const [leftInnerGal] = useSimVar('FUELSYSTEM TANK QUANTITY:4', 'Gallons', 1_553); // 12189.4
+    const [feedTwoGal] = useSimVar('FUELSYSTEM TANK QUANTITY:5', 'Gallons', 1_621); // 7753.2
+    const [feedThreeGal] = useSimVar('FUELSYSTEM TANK QUANTITY:6', 'Gallons', 1_621); // 7753.2
+    const [rightInnerGal] = useSimVar('FUELSYSTEM TANK QUANTITY:7', 'Gallons', 1_741); // 12189.4
+    const [rightMidGal] = useSimVar('FUELSYSTEM TANK QUANTITY:8', 'Gallons', 1_741); // 9632
+    const [feedFourGal] = useSimVar('FUELSYSTEM TANK QUANTITY:9', 'Gallons', 1_621); // 7299.6
+    const [rightOuterGal] = useSimVar('FUELSYSTEM TANK QUANTITY:10', 'Gallons', 1_741); // 2731.5
+    const [trimGal] = useSimVar('FUELSYSTEM TANK QUANTITY:11', 'Gallons', 1_447); // 6260.3
+    const [totalFuelWeightKg] = useSimVar('FUEL TOTAL QUANTITY WEIGHT', 'Kilograms', 1_753); // 6260.3
 
     // TODO: Remove debug override
 
     // TODO: Remove
+
+    const [_feedOneTarget, setFeedOneTarget] = useSimVar('L:A32NX_FUEL_FEED_ONE_DESIRED', 'Gallons', 1_787);
+    const [_feedTwoTarget, setFeedTwoTarget] = useSimVar('L:A32NX_FUEL_FEED_TWO_DESIRED', 'Gallons', 1_787);
+    const [_feedThreeTarget, setFeedThreeTarget] = useSimVar('L:A32NX_FUEL_FEED_THREE_DESIRED', 'Gallons', 1_787);
+    const [_feedFourTarget, setFeedFourTarget] = useSimVar('L:A32NX_FUEL_FEED_FOUR_DESIRED', 'Gallons', 1_787);
+    const [_rightInnerTarget, setRightInnerTarget] = useSimVar('L:A32NX_FUEL_RIGHT_INNER_DESIRED', 'Gallons', 1_951);
+    const [_rightMidTarget, setRightMidTarget] = useSimVar('L:A32NX_FUEL_RIGHT_MID_DESIRED', 'Gallons', 1_951);
+    const [_rightOuterTarget, setRightOuterTarget] = useSimVar('L:A32NX_FUEL_RIGHT_OUTER_DESIRED', 'Gallons', 1_951);
+    const [_leftInnerTarget, setLeftInnerTarget] = useSimVar('L:A32NX_FUEL_LEFT_INNER_DESIRED', 'Gallons', 2_099);
+    const [_leftMidTarget, setLeftMidTarget] = useSimVar('L:A32NX_FUEL_LEFT_MID_DESIRED', 'Gallons', 2_099);
+    const [_leftOuterTarget, setLeftOuterTarget] = useSimVar('L:A32NX_FUEL_LEFT_OUTER_DESIRED', 'Gallons', 2_099);
+    const [_trimGalTarget, setTrimTarget] = useSimVar('L:A32NX_FUEL_TRIM_DESIRED', 'Gallons', 2_269); // 6260.3
     const [fuelDesiredPercent, setFuelDesiredPercent] = useSimVar('L:A32NX_FUEL_DESIRED_PERCENT', 'Number');
-    const [fuelDesired, setFuelDesired] = useSimVar('L:A32NX_FUEL_DESIRED', 'Kilograms');
+    const [fuelDesiredKg, setFuelDesiredKg] = useSimVar('L:A32NX_FUEL_DESIRED', 'Kilograms');
     const [refuelStartedByUser, setRefuelStartedByUser] = useSimVar('L:A32NX_REFUEL_STARTED_BY_USR', 'Bool');
 
     // Simbrief
@@ -196,6 +203,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
         // GSX
         if (gsxFuelSyncEnabled === 1) {
             /*
+            TODO: Uncomment?
             if (boardingStarted) {
                 setShowSimbriefButton(false);
                 return;
@@ -205,15 +213,18 @@ export const A380Fuel: React.FC<FuelProps> = ({
             return;
         }
         // EFB
-        if (Math.abs(Math.round(totalFuelWeightKg) - roundUpNearest100(simbriefPlanRamp)) < 10) {
+        if (Math.abs(Math.round(fuelDesiredKg) - roundUpNearest100(simbriefPlanRamp)) < 10) {
             setShowSimbriefButton(false);
             return;
         }
         setShowSimbriefButton(simbriefDataLoaded);
-    }, [totalFuelWeightKg, simbriefDataLoaded]);
+    }, [fuelDesiredKg, simbriefDataLoaded]);
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const airplaneCanRefuel = () => {
+    useEffect(() => {
+        setFuelDesiredPercent((fuelDesiredKg / TOTAL_MAX_FUEL_KG) * 100);
+    }, [fuelDesiredKg]);
+
+    const airplaneCanRefuel = useCallback(() => {
         if (refuelRate !== '2') {
             if (eng1Running || eng4Running || !isOnGround) {
                 setRefuelRate('2');
@@ -229,18 +240,24 @@ export const A380Fuel: React.FC<FuelProps> = ({
             return (eng1Running || eng4Running || !isOnGround) && refuelRate === '2';
         }
         return true;
-    };
-
-    const formatFuelFilling = (curr: number, max: number) => {
-        const percent = (Math.max(curr, 0) / max) * 100;
-        return `linear-gradient(to top, var(--color-highlight) ${percent}%,#ffffff00 0%)`;
-    };
+    }, [eng1Running, eng4Running, isOnGround, refuelRate, gsxFuelSyncEnabled, gsxFuelHoseConnected]);
 
     // TODO: Replace with proper FQMS system (in rust systems)
     const calculateDesiredFuelKg = useCallback((fuelWeightKg: number) => {
         let wingKg = 0;
         let trimKg = 0;
+
+        const POINT_A_KG = 18000;
+        const POINT_B_KG = 26000;
+        const POINT_C_KG = 36000;
+        const POINT_D_KG = 47000;
+        const POINT_E_KG = 103788;
+        const POINT_F_KG = 158042;
+        const POINT_G_KG = 215702;
+        const POINT_H_KG = 223028;
+
         // Temporary code
+
         if (fuelWeightKg <= POINT_E_KG) {
             wingKg = fuelWeightKg;
         } else if (fuelWeightKg <= POINT_F_KG) {
@@ -250,7 +267,8 @@ export const A380Fuel: React.FC<FuelProps> = ({
         } else {
             trimKg = Math.max(Math.min(TRIM_TANK_MAX_KG, fuelWeightKg - POINT_H_KG), 8000);
         }
-        setTrim(trimKg / FUEL_GALLONS_TO_KG);
+        // setTrim(trimKg / FUEL_GALLONS_TO_KG);
+        setTrimTarget(trimKg / FUEL_GALLONS_TO_KG);
 
         wingKg = fuelWeightKg - trimKg;
 
@@ -259,6 +277,18 @@ export const A380Fuel: React.FC<FuelProps> = ({
         let outerTankKg = 0;
         let midTankKg = 0;
         let innerTankKg = 0;
+
+        const FEED_A_KG = 4500;
+        const FEED_C_KG = 7000;
+        const OUTER_FEED_E_KG = 20558;
+        const INNER_FEED_E_KG = 21836;
+
+        const OUTER_TANK_B_KG = 4000;
+        const OUTER_TANK_H_KG = 7693;
+        const MID_TANK_F_KG = 27127;
+        const INNER_TANK_D_KG = 5500;
+        const INNER_TANK_G_KG = 34300;
+
         if (wingKg <= POINT_A_KG) {
             outerFeedKg = (wingKg / 4);
             innerFeedKg = (wingKg / 4);
@@ -307,6 +337,18 @@ export const A380Fuel: React.FC<FuelProps> = ({
             midTankKg = MID_TANK_F_KG + (wingKg - POINT_H_KG) / 10;
         }
 
+        setFeedOneTarget(outerFeedKg / FUEL_GALLONS_TO_KG);
+        setFeedFourTarget(outerFeedKg / FUEL_GALLONS_TO_KG);
+        setFeedTwoTarget(innerFeedKg / FUEL_GALLONS_TO_KG);
+        setFeedThreeTarget(innerFeedKg / FUEL_GALLONS_TO_KG);
+        setLeftOuterTarget(outerTankKg / FUEL_GALLONS_TO_KG);
+        setRightOuterTarget(outerTankKg / FUEL_GALLONS_TO_KG);
+        setLeftInnerTarget(innerTankKg / FUEL_GALLONS_TO_KG);
+        setRightInnerTarget(innerTankKg / FUEL_GALLONS_TO_KG);
+        setLeftMidTarget(midTankKg / FUEL_GALLONS_TO_KG);
+        setRightMidTarget(midTankKg / FUEL_GALLONS_TO_KG);
+
+        /*
         setFeedOne(outerFeedKg / FUEL_GALLONS_TO_KG);
         setFeedFour(outerFeedKg / FUEL_GALLONS_TO_KG);
         setFeedTwo(innerFeedKg / FUEL_GALLONS_TO_KG);
@@ -317,61 +359,17 @@ export const A380Fuel: React.FC<FuelProps> = ({
         setRightInner(innerTankKg / FUEL_GALLONS_TO_KG);
         setLeftMid(midTankKg / FUEL_GALLONS_TO_KG);
         setRightMid(midTankKg / FUEL_GALLONS_TO_KG);
-
-        /*
-        Feed 1+4 Tanks
-        F14 = (WT / 4) if WT <= [Point A]
-        F14 = [Outer Feed Mark A] if [Point B] >= WT > [Point A]
-        F14 = [Outer Feed Mark A] + (WT - [Point B]) / 4 if [Point C] >= WT > [Point B]
-        F14 = [Outer Feed Mark C] if [Point D] >= WT > [Point C]
-        F14 = [Outer Feed Mark C] + (WT - [Point D]) * ([Outer Feed Mark E]/([Outer Feed Mark E] * 2 + [Inner Feed Mark E] * 2)) if [Point E] >= WT > [Point D]
-        F14 = [Outer Feed Mark E] if [Point H] >= WT > [Point E]
-        F14 = [Outer Feed Mark E] + (WT - [Point H]) / 10 if WT > [Point H]
-
-        Feed 2+3 Tanks
-        F23 = (WT / 4) if WT <= [Point A]
-        F23 = [Inner Feed Mark A] if [Point B] >= WT > [Point A]
-        F23 = [Inner Feed Mark A] + (WT - [Point B]) / 4 if [Point C] >= WT > [Point B]
-        F23 = [Inner Feed Mark C] if [Point D] >= WT > [Point C]
-        F23 = [Inner Feed Mark C] + (WT - [Point D]) * ([Inner Feed Mark E]/([Outer Feed Mark E] * 2 + [Inner Feed Mark E] * 2)) if [Point E] >= WT > [Point D]
-        F23 = [Inner Feed Mark E] if [Point H] >= WT > [Point E]
-        F23 = [Inner Feed Mark E] + (WT - [Point H]) / 10 if WT > [Point H]
-
-        Outer Tanks
-        O = 0 if WT < [Point A]
-        O = (WT - [Point A]) / 2 if [Point B] >= WT >= [Point A]
-        O = [Outer Tank Mark B] if [Point G] >= WT > [Point B]
-        O = [Outer Tank Mark B] + (WT - [Point G]) / 2 if [Point H] >= WT > [Point G]
-        O = [Outer Tank Mark H] + (WT - [Point H]) / 10 if WT > [Point H]
-
-        Mid Tanks
-        M = 0 if WT < [Point E]
-        M = (WT - [Point E]) / 2 if [Point F] >= WT >= [Point E]
-        M = [Mid Tank Mark F] if [Point H] >= WT > [Point F]
-        M = [Mid Tank Mark F] + (WT - [Point H]) / 10 if WT > [Point H]
-
-        Inner Tanks
-        I = 0 if WT < [Point C]
-        I = (WT - [Point C]) / 2 if [Point D] >= WT >=  [Point C]
-        I = [Inner Tank Mark D] if [Point F] >= WT > [Point D]
-        I = [Inner Tank Mark D] + (WT - [Point F]) / 2 if [Point G] >= WT > [Point F]
-        I = [Inner Tank Mark G] if [Point H] >= WT > [Point G]
-        I = [Inner Tank Mark G] + (WT - [Point H]) / 10 if WT > [Point H]
         */
     }, []);
 
-    const updateDesiredFuel = (desiredFuelKg: string) => {
-        let fuelWeightKg = 0;
-        if (desiredFuelKg.length > 0) {
-            fuelWeightKg = parseInt(desiredFuelKg);
-            if (fuelWeightKg > TOTAL_MAX_FUEL_KG) {
-                fuelWeightKg = round(TOTAL_MAX_FUEL_KG);
-            }
-            // setInputValue(fuelWeightKg);
+    const updateDesiredFuel = (newDesiredFuelKg: number) => {
+        if (newDesiredFuelKg > TOTAL_MAX_FUEL_KG) {
+            newDesiredFuelKg = round(TOTAL_MAX_FUEL_KG);
         }
-        // TODO: Remove
-        setFuelDesiredPercent((fuelWeightKg / TOTAL_MAX_FUEL_KG) * 100);
-        calculateDesiredFuelKg(fuelWeightKg);
+
+        setFuelDesiredKg(newDesiredFuelKg);
+        setFuelDesiredPercent((newDesiredFuelKg / TOTAL_MAX_FUEL_KG) * 100);
+        calculateDesiredFuelKg(newDesiredFuelKg);
     };
 
     // TODO: Remove
@@ -381,64 +379,13 @@ export const A380Fuel: React.FC<FuelProps> = ({
         }
         setFuelDesiredPercent(percent);
         const fuel = Math.round(TOTAL_MAX_FUEL_KG * (percent / 100));
-        updateDesiredFuel(fuel.toString());
+        updateDesiredFuel(fuel);
     };
 
     /*
-    const setDesiredFuel = (fuel: number) => {
-        fuel -= (OUTER_CELL_GALLONS) * 2;
-        const outerTank = (((OUTER_CELL_GALLONS) * 2) + Math.min(fuel, 0)) / 2;
-        setLOutTarget(outerTank);
-        setROutTarget(outerTank);
-        if (fuel <= 0) {
-            setLInnTarget(0);
-            setRInnTarget(0);
-            setCenterTarget(0);
-            return;
-        }
-        fuel -= (INNER_CELL_GALLONS) * 2;
-        const innerTank = (((INNER_CELL_GALLONS) * 2) + Math.min(fuel, 0)) / 2;
-        setLInnTarget(innerTank);
-        setRInnTarget(innerTank);
-        if (fuel <= 0) {
-            setCenterTarget(0);
-            return;
-        }
-        setCenterTarget(fuel);
-    };
-    */
-
-    /*
-    const updateDesiredFuel = (value: string) => {
-        let fuel = 0;
-        let originalFuel = 0;
-        if (value.length > 0) {
-            originalFuel = parseInt(value);
-            fuel = convertToGallon(originalFuel);
-            if (originalFuel > totalFuel()) {
-                originalFuel = round(totalFuel());
-            }
-            setInputValue(originalFuel);
-        }
-        if (fuel > TOTAL_FUEL_GALLONS) {
-            fuel = TOTAL_FUEL_GALLONS + 2;
-        }
-        setTotalTarget(fuel);
-        setSliderValue((fuel / TOTAL_FUEL_GALLONS) * 100);
-        setDesiredFuel(fuel);
-    };
-
-    const updateSlider = (value: number) => {
-        if (value < 2) {
-            value = 0;
-        }
-        setSliderValue(value);
-        const fuel = Math.round(totalFuel() * (value / 100));
-        updateDesiredFuel(fuel.toString());
-    };
-
+    TODO: Uncomment, refactor for new variable naming, and add 380 specific fueling estimate logic
     const calculateEta = () => {
-        if (round(totalTarget) === totalCurrentGallon() || refuelRate === '2') { // instant
+        if (round(totalTarget) === totalFuelWeightKg || refuelRate === '2') { // instant
             return ' 0';
         }
         let estimatedTimeSeconds = 0;
@@ -457,14 +404,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
     };
      */
 
-    /*
-    const switchRefuelState = () => {
-        if (airplaneCanRefuel()) {
-            setRefuelStartedByUser(!refuelStartedByUser);
-        }
-    };
-    */
-
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const handleSimbriefFuelSync = () => {
         let fuelToLoad = -1;
@@ -481,14 +420,29 @@ export const A380Fuel: React.FC<FuelProps> = ({
             fuelToLoad = roundUpNearest100(simbriefPlanRamp);
         }
 
-        updateDesiredFuel(fuelToLoad.toString());
+        updateDesiredFuel(fuelToLoad);
     };
 
     const roundUpNearest100 = (plannedFuel: number) => Math.ceil(plannedFuel / 100) * 100;
 
-    useEffect(() => {
-        setFuelDesiredPercent((totalFuelWeightKg / TOTAL_MAX_FUEL_KG) * 100);
-    }, [totalFuelWeightKg]);
+    const switchRefuelState = useCallback(() => {
+        if (airplaneCanRefuel()) {
+            setRefuelStartedByUser(!refuelStartedByUser);
+        }
+    }, [refuelStartedByUser]);
+
+    const formatRefuelStatusClass = useCallback(() => {
+        if (airplaneCanRefuel()) {
+            if (round(fuelDesiredKg) === totalFuelWeightKg || !refuelStartedByUser) {
+                if (refuelStartedByUser) {
+                    setRefuelStartedByUser(false);
+                }
+                return 'text-theme-highlight';
+            }
+            return (fuelDesiredKg > totalFuelWeightKg) ? 'text-green-500' : 'text-yellow-500';
+        }
+        return 'text-theme-accent';
+    }, [fuelDesiredKg, totalFuelWeightKg, refuelStartedByUser]);
 
     return (
         <div className="flex relative flex-col justify-center">
@@ -736,10 +690,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                                     value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)}
                                     onBlur={(x) => {
                                         if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                            setTrim(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                            // TODO: Remove placeholder refueling setting
-                                            setRefuelStartedByUser(true);
-                                            setRefuelRate('2');
+                                            setTrimTarget(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
                                         }
                                     }}
                                     unit={massUnitForDisplay}
@@ -749,54 +700,53 @@ export const A380Fuel: React.FC<FuelProps> = ({
                     </tbody>
                 </table>
             </Card>
-
-            <div className="flex overflow-x-hidden absolute bottom-0 left-0 z-10 flex-row max-w-3xl rounded-2xl border border-theme-accentborder-2">
-                <div className="py-3 px-5 space-y-4">
-                    <div className="flex flex-row justify-between items-center">
-                        <div className="flex flex-row items-center space-x-3">
-                            <h2 className="font-medium">{t('Ground.Fuel.Refuel')}</h2>
-                            <p className="text-theme-accent" />
+            <div className="flex flex-col justify-end items-center">
+                <div className="flex overflow-x-hidden absolute bottom-0 left-0 z-10 flex-row max-w-4xl rounded-2xl border border-theme-accentborder-2">
+                    <div className="py-3 px-5 space-y-4">
+                        <div className="flex flex-row justify-between items-center">
+                            <div className="flex flex-row items-center space-x-3">
+                                <h2 className="font-medium">{t('Ground.Fuel.Refuel')}</h2>
+                                <p className="text-theme-accent" />
+                            </div>
+                            {/*
+                            // TODO: Implement
+                                <p>{`${t('Ground.Fuel.EstimatedDuration')}: 0`}</p>
+                            */}
                         </div>
-                        <p>{`${t('Ground.Fuel.EstimatedDuration')}: 0`}</p>
-                    </div>
-                    <div className="flex flex-row items-center space-x-6">
-                        <Slider
-                            style={{ width: '28rem' }}
-                            value={fuelDesiredPercent}
-                            onChange={updateDesiredFuelPercent}
-                        />
-                        <div className="flex flex-row">
-                            <ValueSimbriefInput
-                                min={0}
-                                max={Math.ceil(Units.kilogramToUser(TOTAL_MAX_FUEL_KG))}
-                                value={Units.kilogramToUser(totalFuelWeightKg)}
-                                onBlur={(x) => {
-                                    if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                        calculateDesiredFuelKg(Units.userToKilogram(parseInt(x)));
-                                        // TODO: Remove placeholder refueling setting
-                                        setRefuelStartedByUser(true);
-                                        setRefuelRate('2');
-                                    }
-                                }}
-                                unit={massUnitForDisplay}
-                                showSimbriefButton={showSimbriefButton}
-                                onClickSync={handleSimbriefFuelSync}
-                                disabled={gsxFuelSyncEnabled === 1}
+                        <div className="flex flex-row items-center space-x-32">
+                            <Slider
+                                style={{ width: '28rem' }}
+                                value={fuelDesiredPercent}
+                                onChange={updateDesiredFuelPercent}
                             />
+                            <div className="flex flex-row">
+                                <ValueSimbriefInput
+                                    min={0}
+                                    max={Math.ceil(Units.kilogramToUser(TOTAL_MAX_FUEL_KG))}
+                                    value={Units.kilogramToUser(fuelDesiredKg)}
+                                    onBlur={(x) => {
+                                        if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
+                                            calculateDesiredFuelKg(Units.userToKilogram(parseInt(x)));
+                                        }
+                                    }}
+                                    unit={massUnitForDisplay}
+                                    showSimbriefButton={showSimbriefButton}
+                                    onClickSync={handleSimbriefFuelSync}
+                                    disabled={gsxFuelSyncEnabled === 1}
+                                />
+                            </div>
                         </div>
                     </div>
-                </div>
-                {/*
                     <div
-                        className="flex justify-center items-center w-20 bg-current text-theme-accent"
-                        onClick={() => null switchRefuelState()}
+                        className={`flex justify-center items-center w-48 ${formatRefuelStatusClass()} bg-current`}
+                        onClick={() => switchRefuelState()}
                     >
                         <div className={`${airplaneCanRefuel() ? 'text-white' : 'text-theme-unselected'}`}>
                             <PlayFill size={50} className={refuelStartedByUser ? 'hidden' : ''} />
                             <StopCircleFill size={50} className={refuelStartedByUser ? '' : 'hidden'} />
                         </div>
                     </div>
-                */}
+                </div>
             </div>
 
             <div className="flex overflow-x-hidden absolute right-6 bottom-0 flex-col justify-center items-center py-3 px-6 space-y-2 rounded-2xl border border-theme-accent">
