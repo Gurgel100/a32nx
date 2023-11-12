@@ -1,14 +1,7 @@
 /*
-Point A = 18000
-Point B = 26000
-Point C = 36000
-Point D = 47000
-Point E = 103788
-Point F = 158042
-Point G = 215702
-Point H = 223028
-
-// Point I = 267764
+            | A     | B     | C     | D     | E      | F      | G      | H      | I
+Fuel Weight | 18000 | 26000 | 36000 | 47000 | 103788 | 158042 | 215702 | 223028 | 267764+
+Note: +(varies with fuel density)
 
 Outer Feed Mark A = 4500
 Outer Feed Mark C = 7000
@@ -26,9 +19,6 @@ Mid Tank Mark F = 27127
 Inner Tank Mark D = 5500
 Inner Tank Mark G = 34300
 
-*/
-
-/*
 Feed 1+4 Tanks
 F14 = (WT / 4) if WT <= [Point A]
 F14 = [Outer Feed Mark A] if [Point B] >= WT > [Point A]

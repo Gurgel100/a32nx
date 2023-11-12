@@ -1,6 +1,6 @@
 use crate::simulation::{
     InitContext, Read, SimulationElement, SimulationElementVisitor, SimulatorReader,
-    VariableIdentifier,
+    SimulatorWriter, VariableIdentifier, Write,
 };
 use nalgebra::Vector3;
 use num_traits::Zero;
@@ -23,6 +23,7 @@ pub trait FuelCG {
 pub struct FuelInfo<'a> {
     pub fuel_tank_id: &'a str,
     pub position: (f64, f64, f64),
+    pub total_capacity_gallons: f64,
 }
 
 #[derive(Debug)]
@@ -47,11 +48,22 @@ impl FuelTank {
     pub fn quantity(&self) -> Mass {
         self.quantity
     }
+
+    pub fn set_quantity(&mut self, quantity: Mass) {
+        self.quantity = quantity;
+    }
 }
 impl SimulationElement for FuelTank {
     fn read(&mut self, reader: &mut SimulatorReader) {
         let volume: f64 = reader.read(&self.fuel_id);
         self.quantity = Mass::new::<kilogram>(volume * FUEL_GALLONS_TO_KG);
+    }
+
+    fn write(&self, writer: &mut SimulatorWriter) {
+        writer.write(
+            &self.fuel_id,
+            self.quantity.get::<kilogram>() / FUEL_GALLONS_TO_KG,
+        );
     }
 }
 
