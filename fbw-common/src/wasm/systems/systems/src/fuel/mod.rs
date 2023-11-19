@@ -95,6 +95,10 @@ impl<const N: usize> FuelSystem<N> {
         self.unlimited_fuel || !self.fuel_tanks[t].quantity().is_zero()
     }
 
+    pub fn set_tank_quantity(&mut self, t: usize, quantity: Mass) {
+        self.fuel_tanks[t].set_quantity(quantity);
+    }
+
     pub fn center_of_gravity(&self) -> Vector3<f64> {
         let positions = self.fuel_tanks.iter().map(|t| t.location());
         let masses = self.fuel_tanks.iter().map(|t| t.quantity());
