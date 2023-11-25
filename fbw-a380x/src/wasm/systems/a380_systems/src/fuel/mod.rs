@@ -243,7 +243,7 @@ impl FuelPayload for A380Fuel {
     }
 
     fn tank_mass(&self, t: usize) -> Mass {
-        self.fuel_system.tank_mass(t)
+        self.fuel_system().tank_mass(t)
     }
 }
 impl FuelCG for A380Fuel {
