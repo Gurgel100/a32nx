@@ -51,26 +51,31 @@ impl A320Fuel {
     pub const A320_FUEL: [FuelInfo<'_>; 5] = [
         FuelInfo {
             fuel_tank_id: "FUEL TANK CENTER QUANTITY",
+            fuel_set_id: "FUEL_TANK_CENTER_QUANTITY",
             position: (-4.5, 0., 1.),
             total_capacity_gallons: 2179.,
         },
         FuelInfo {
             fuel_tank_id: "FUEL TANK LEFT MAIN QUANTITY",
+            fuel_set_id: "FUEL_TANK_LEFT_MAIN_QUANTITY",
             position: (-8., -13., 2.),
             total_capacity_gallons: 1816.,
         },
         FuelInfo {
             fuel_tank_id: "FUEL TANK LEFT AUX QUANTITY",
+            fuel_set_id: "FUEL_TANK_LEFT_AUX_QUANTITY",
             position: (-16.9, -27., 3.),
             total_capacity_gallons: 228.,
         },
         FuelInfo {
             fuel_tank_id: "FUEL TANK RIGHT MAIN QUANTITY",
+            fuel_set_id: "FUEL_TANK_RIGHT_MAIN_QUANTITY",
             position: (-8., 13., 2.),
             total_capacity_gallons: 1816.,
         },
         FuelInfo {
             fuel_tank_id: "FUEL TANK RIGHT AUX QUANTITY",
+            fuel_set_id: "FUEL_TANK_RIGHT_AUX_QUANTITY",
             position: (-16.9, 27., 3.),
             total_capacity_gallons: 228.,
         },
@@ -81,7 +86,9 @@ impl A320Fuel {
             FuelTank::new(
                 context,
                 f.fuel_tank_id,
+                f.fuel_set_id,
                 Vector3::new(f.position.0, f.position.1, f.position.2),
+                false,
             )
         });
         A320Fuel {
