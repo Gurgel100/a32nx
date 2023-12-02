@@ -1,5 +1,38 @@
 /* eslint-disable max-len */
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+
+const AnimatedLinearGradient = ({ id, percent, color, duration, enableDynamic }) => {
+    const animationRef1 = useRef(null);
+    const animationRef2 = useRef(null);
+    const [previousPercent, setPreviousPercent] = React.useState(percent);
+
+    useEffect(() => {
+        if (animationRef1.current && enableDynamic) {
+        // Reset the animation when percent changes
+            animationRef1.current.setAttribute('values', `${previousPercent / 100};${percent / 100}`);
+            animationRef1.current.beginElement();
+        }
+        if (animationRef2.current && enableDynamic) {
+        // Reset the animation when percent changes
+            animationRef2.current.setAttribute('values', `${previousPercent / 100};${percent / 100}`);
+            animationRef2.current.beginElement();
+        }
+        setPreviousPercent(percent);
+    }, [percent]);
+
+    return (
+        <linearGradient id={id} x1="0" x2="0" y1="1" y2="0">
+            <stop offset="0%" stopColor={color} />
+            <stop offset={`${percent}%`} stopColor={color}>
+                <animate ref={(ref) => (animationRef1.current = ref)} attributeName="offset" values={`0;${percent / 100}`} dur={duration} repeatCount="1" />
+            </stop>
+            <stop offset={`${percent}%`} stopColor="white" stopOpacity="0">
+                <animate ref={(ref) => (animationRef2.current = ref)} attributeName="offset" values={`0;${percent / 100}`} dur={duration} repeatCount="1" />
+            </stop>
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
+        </linearGradient>
+    );
+};
 
 export const A380FuelOutline = ({ className, feed1Percent, feed2Percent, feed3Percent, feed4Percent, leftInnerPercent, leftMidPercent, leftOuterPercent, rightInnerPercent, rightMidPercent, rightOuterPercent, trimPercent }: {
     className: string,
@@ -12,76 +45,20 @@ export const A380FuelOutline = ({ className, feed1Percent, feed2Percent, feed3Pe
         <defs>
             <style>
                 {
-                    '.cls-1, .cls-2, .cls-3, .cls-4 { fill: none; stroke: #fff; stroke-miterlimit: 10; } .cls-2 { stroke-width: 3px; } .cls-3 { stroke-width: 2px; } .cls-4 { stroke-width: .5px; } .cls-5 { fill: #00e0fe; }'
+                    '.cls-1, .cls-2, .cls-3, .cls-4 { stroke-miterlimit: 10; } .cls-2 { stroke-width: 3px; } .cls-3 { stroke-width: 2px; } .cls-4 { stroke-width: .5px; }'
                 }
             </style>
-
-            <linearGradient id="gradientFeed1" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${feed1Percent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${feed1Percent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientFeed2" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${feed2Percent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${feed2Percent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientFeed3" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${feed3Percent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${feed3Percent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientFeed4" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${feed4Percent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${feed4Percent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientLeftInner" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${leftInnerPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${leftInnerPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientLeftMid" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${leftMidPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${leftMidPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientLeftOuter" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${leftOuterPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${leftOuterPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientRightInner" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${rightInnerPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${rightInnerPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientRightMid" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${rightMidPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${rightMidPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientRightOuter" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${rightOuterPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${rightOuterPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
-            <linearGradient id="gradientTrim" x1="0" x2="0" y1="1" y2="0">
-                <stop offset="0%" stopColor="var(--color-highlight)" />
-                <stop offset={`${trimPercent}%`} stopColor="var(--color-highlight)" />
-                <stop offset={`${trimPercent}%`} stopColor="white" stopOpacity="0" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-            </linearGradient>
+            <AnimatedLinearGradient id="gradientFeed1" percent={feed1Percent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientFeed2" percent={feed2Percent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientFeed3" percent={feed3Percent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientFeed4" percent={feed4Percent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientLeftInner" percent={leftInnerPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientLeftMid" percent={leftMidPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientLeftOuter" percent={leftOuterPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientRightInner" percent={rightInnerPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientRightMid" percent={rightMidPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientRightOuter" percent={rightOuterPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
+            <AnimatedLinearGradient id="gradientTrim" percent={trimPercent} color="var(--color-highlight)" duration="0.5s" enableDynamic />
         </defs>
         <g id="FUEL">
             <g id="Right_Wing_FUEL" data-name="Right Wing FUEL">

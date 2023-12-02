@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
-use crate::{systems::simulation::SimulationElement, A380};
+use crate::systems::simulation::SimulationElement;
 use nalgebra::Vector3;
 use systems::{
     fuel::{self, FuelInfo, FuelSystem, FuelTank, RefuelRate},
@@ -252,11 +252,20 @@ impl CoreProcessingInputsOutputsCommandModule {
         let g: Mass = Mass::new::<kilogram>(215702.);
         let h: Mass = Mass::new::<kilogram>(223028.);
 
+        let trim_1: Mass = Mass::new::<kilogram>(4000.);
+        let trim_2: Mass = Mass::new::<kilogram>(8000.);
+        let trim_max: Mass = Mass::new::<kilogram>(19026.);
+
         // TODO: Trim tank logic
         let trim_fuel: Mass = match total_desired_fuel {
             x if x <= f => Mass::default(),
-            x if x <= h => total_desired_fuel - g,
-            _ => total_desired_fuel - h,
+            x if x < f + trim_1 => total_desired_fuel - f,
+            x if x <= f + trim_1 => trim_1,
+            x if x <= g => trim_1,
+            x if x <= g + trim_2 => trim_1 + total_desired_fuel - g,
+            x if x <= h => trim_2,
+            x if x <= h + (trim_max - trim_2) => trim_2 + total_desired_fuel - h,
+            _ => trim_max,
         };
 
         let wing_fuel: Mass = total_desired_fuel - trim_fuel;
@@ -294,7 +303,7 @@ impl CoreProcessingInputsOutputsCommandModule {
             x if x <= a => Mass::default(),
             x if x <= b => (wing_fuel - a) / 2.,
             x if x <= g => outer_tank_b,
-            x if x <= h => outer_tank_b + (wing_fuel - g) / 2.0,
+            x if x <= h => outer_tank_b + (wing_fuel - g) / 2.,
             _ => outer_tank_h + (wing_fuel - h) / 10.,
         };
 
