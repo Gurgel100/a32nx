@@ -98,12 +98,12 @@ impl RefuelPanelInput {
 
     fn refuel_is_enabled(&self) -> bool {
         self.refuel_status
-            && (self.engine_1_state == EngineState::Off
-                && self.engine_2_state == EngineState::Off
-                && self.engine_3_state == EngineState::Off
-                && self.engine_4_state == EngineState::Off
-                && self.is_on_ground
-                && self.ground_speed < Velocity::new::<knot>(0.1))
+            && self.engine_1_state == EngineState::Off
+            && self.engine_2_state == EngineState::Off
+            && self.engine_3_state == EngineState::Off
+            && self.engine_4_state == EngineState::Off
+            && self.is_on_ground
+            && self.ground_speed < Velocity::new::<knot>(0.1)
     }
 }
 impl SimulationElement for RefuelPanelInput {
@@ -217,6 +217,7 @@ impl CoreProcessingInputsOutputsCommandModule {
             RefuelRate::Fast => {
                 // if self.is_powered &&
                 if refuel_panel_input.refuel_is_enabled() {
+                    println!("Fast Time refueling...");
                     self.refuel_driver.execute_timed_refuel(
                         delta_time,
                         true,
@@ -238,8 +239,7 @@ impl CoreProcessingInputsOutputsCommandModule {
         }
     }
 
-    // TODO: Move into a separate module away from CPIOM logic
-    fn calculate_auto_refuel(
+    pub fn calculate_auto_refuel(
         &mut self,
         total_desired_fuel: Mass,
     ) -> HashMap<A380FuelTankType, Mass> {
@@ -365,7 +365,7 @@ impl SimulationElement for CoreProcessingInputsOutputsCommandModule {
 pub struct RefuelDriver {}
 impl RefuelDriver {
     const WING_FUELRATE_GAL_SEC: f64 = 16.;
-    const FAST_SPEED_FACTOR: f64 = 10.;
+    const FAST_SPEED_FACTOR: f64 = 5.;
 
     pub fn new() -> Self {
         Self {}
@@ -380,15 +380,17 @@ impl RefuelDriver {
         desired_quantities: HashMap<A380FuelTankType, Mass>,
     ) {
         let speed_multi = if is_fast { Self::FAST_SPEED_FACTOR } else { 1. };
-        println!("Timed Refuel {}", speed_multi);
 
-        let t = delta_time.as_secs() as f64;
-        println!("delta_time {}", t);
-        let total_delta_fuel: Mass = Mass::new::<kilogram>(
-            t * Self::WING_FUELRATE_GAL_SEC * speed_multi * fuel::FUEL_GALLONS_TO_KG,
+        let t = delta_time.as_millis() as f64;
+        println!("Delta Time {}", t);
+        let max_tick_delta_fuel: Mass = Mass::new::<kilogram>(
+            t * Self::WING_FUELRATE_GAL_SEC * speed_multi * fuel::FUEL_GALLONS_TO_KG / 1000.,
         );
 
-        println!("total_delta_fuel: {}", total_delta_fuel.get::<kilogram>());
+        println!(
+            "max_tick_delta_fuel: {}",
+            max_tick_delta_fuel.get::<kilogram>()
+        );
 
         // Naive method, move fuel from every tank, limit to max_delta
         let left_channel = [
@@ -420,20 +422,21 @@ impl RefuelDriver {
         ];
 
         let left_resolve = self.resolve_delta_in_channel(
-            total_delta_fuel / 2.,
+            max_tick_delta_fuel / 2.,
             left_channel,
             &desired_quantities,
             fuel_system,
         );
 
         let right_resolve = self.resolve_delta_in_channel(
-            total_delta_fuel / 2.,
+            max_tick_delta_fuel / 2.,
             right_channel,
             &desired_quantities,
             fuel_system,
         );
 
         if left_resolve && right_resolve {
+            println!("Left and right resolved!");
             refuel_panel_input.set_refuel_status(false);
         }
     }
@@ -465,6 +468,11 @@ impl RefuelDriver {
             if delta > remaining_delta {
                 fuel_system
                     .set_tank_quantity(tank as usize, current_quantity + sign * remaining_delta);
+                println!(
+                    "Tank {:?} : {:?} kg",
+                    tank,
+                    current_quantity + sign * remaining_delta
+                );
                 println!("Exited loop!");
                 return false;
             } else {
@@ -573,7 +581,6 @@ impl A380FuelQuantityManagementSystem {
             FuelTank::new(
                 context,
                 f.fuel_tank_id,
-                f.fuel_set_id,
                 Vector3::new(f.position.0, f.position.1, f.position.2),
                 true,
             )
@@ -597,14 +604,16 @@ impl A380FuelQuantityManagementSystem {
     }
 
     pub fn update(&mut self, context: &UpdateContext) {
-        let total_desired_fuel: Mass = self.integrated_refuel_panel.total_desired_fuel();
-        let auto_refuel = true;
-
         self.cpiom_command_f1.update(
             context.delta(),
             &mut self.fuel_system,
             &mut self.integrated_refuel_panel,
         );
+    }
+
+    #[cfg(test)]
+    pub fn cpiom_command_f1(&mut self) -> &mut CoreProcessingInputsOutputsCommandModule {
+        &mut self.cpiom_command_f1
     }
 
     pub fn fuel_system(&self) -> &FuelSystem<11> {

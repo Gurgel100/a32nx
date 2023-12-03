@@ -40,7 +40,6 @@ pub trait FuelCG {
 #[derive(Debug)]
 pub struct FuelInfo<'a> {
     pub fuel_tank_id: &'a str,
-    pub fuel_set_id: &'a str,
     pub position: (f64, f64, f64),
     pub total_capacity_gallons: f64,
 }
@@ -48,22 +47,14 @@ pub struct FuelInfo<'a> {
 #[derive(Debug)]
 pub struct FuelTank {
     fuel_id: VariableIdentifier,
-    fuel_set_id: VariableIdentifier,
     location: Vector3<f64>,
     quantity: Mass,
     write: bool,
 }
 impl FuelTank {
-    pub fn new(
-        context: &mut InitContext,
-        get_id: &str,
-        set_id: &str,
-        location: Vector3<f64>,
-        write: bool,
-    ) -> Self {
+    pub fn new(context: &mut InitContext, id: &str, location: Vector3<f64>, write: bool) -> Self {
         FuelTank {
-            fuel_id: context.get_identifier(get_id.to_owned()),
-            fuel_set_id: context.get_identifier(set_id.to_owned()),
+            fuel_id: context.get_identifier(id.to_owned()),
             location,
             quantity: Mass::default(),
             write,
@@ -91,7 +82,7 @@ impl SimulationElement for FuelTank {
     fn write(&self, writer: &mut SimulatorWriter) {
         if self.write {
             writer.write(
-                &self.fuel_set_id,
+                &self.fuel_id,
                 if self.quantity.is_zero() {
                     0.
                 } else {
@@ -99,6 +90,9 @@ impl SimulationElement for FuelTank {
                 },
             );
         }
+    }
+    fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
+        visitor.visit(self);
     }
 }
 
