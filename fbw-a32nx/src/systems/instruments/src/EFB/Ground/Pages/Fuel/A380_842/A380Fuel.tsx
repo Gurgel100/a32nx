@@ -13,32 +13,7 @@ import { SimpleInput } from '../../../../UtilComponents/Form/SimpleInput/SimpleI
 import { SelectGroup, SelectItem } from '../../../../UtilComponents/Form/Select';
 import { ProgressBar } from '../../../../UtilComponents/Progress/Progress';
 
-// TODO: Page is very WIP, needs to be cleaned up and refactored
-
-/*
-interface ValueInputProps {
-    min: number,
-    max: number,
-    value: number
-    onBlur: (v: string) => void,
-    unit: string,
-    disabled?: boolean
-}
-const ValueInput: React.FC<ValueInputProps> = ({ min, max, value, onBlur, unit, disabled }) => (
-    <div className="relative w-40">
-        <SimpleInput
-            className={`my-2 w-full font-mono ${(disabled ? 'placeholder:text-theme-body text-theme-body cursor-not-allowed' : '')}`}
-            fontSizeClassName="text-2xl"
-            number
-            min={min}
-            max={max}
-            value={value.toFixed(0)}
-            onBlur={onBlur}
-        />
-        <div className="flex absolute top-0 right-3 items-center h-full font-mono text-2xl text-gray-400">{unit}</div>
-    </div>
-);
-*/
+// Page is very WIP, needs to be cleaned up and refactored
 
 interface ValueSimbriefInputProps {
     min: number,
@@ -135,6 +110,8 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [TOTAL_MAX_FUEL_KG] = useState(TOTAL_FUEL_GALLONS * FUEL_GALLONS_TO_KG);
 
     const [eng1Running] = useSimVar('ENG COMBUSTION:1', 'Bool', 1_000);
+    const [eng2Running] = useSimVar('ENG COMBUSTION:2', 'Bool', 1_000);
+    const [eng3Running] = useSimVar('ENG COMBUSTION:3', 'Bool', 1_000);
     const [eng4Running] = useSimVar('ENG COMBUSTION:4', 'Bool', 1_000);
     const [refuelRate, setRefuelRate] = usePersistentProperty('REFUEL_RATE_SETTING');
 
@@ -144,21 +121,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [MID_TANK_MAX_KG] = useState(9632 * FUEL_GALLONS_TO_KG); // 29299.51 kg
     const [OUTER_TANK_MAX_KG] = useState(2731.5 * FUEL_GALLONS_TO_KG); // 8299.51 kg
     const [TRIM_TANK_MAX_KG] = useState(6260.3 * FUEL_GALLONS_TO_KG); // 18999.51 kg
-
-    /**
-     *
-    TODO: Replace placeholder trim tank code with desired ZFW CG to trim tank based on manual refueling tables
-    const [zfw] = useSimVar('L:A32NX_AIRFRAME_ZFW', 'number', 1_553);
-    const [zfwDesired] = useSimVar('L:A32NX_AIRFRAME_ZFW_DESIRED', 'number', 1_621);
-    const [gw] = useSimVar('L:A32NX_AIRFRAME_GW', 'number', 1_741);
-    const [gwDesired] = useSimVar('L:A32NX_AIRFRAME_GW_DESIRED', 'number', 1_787);
-
-    // CG MAC
-    const [zfwCgMac] = useSimVar('L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC', 'number', 1_223);
-    const [desiredZfwCgMac] = useSimVar('L:A32NX_AIRFRAME_ZFW_CG_PERCENT_MAC_DESIRED', 'number', 1_279);
-    const [gwCgMac] = useSimVar('L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC', 'number', 1_301);
-    const [desiredGwCgMac] = useSimVar('L:A32NX_AIRFRAME_GW_CG_PERCENT_MAC_DESIRED', 'number', 1_447);
-     */
 
     const [leftOuterGal] = useSimVar('FUELSYSTEM TANK QUANTITY:1', 'Gallons', 2_000);
     const [feedOneGal] = useSimVar('FUELSYSTEM TANK QUANTITY:2', 'Gallons', 2_000);
@@ -224,10 +186,10 @@ export const A380Fuel: React.FC<FuelProps> = ({
             }
 
             // In-flight refueling with GSX Sync enabled
-            return (eng1Running || eng4Running || !isOnGround) && refuelRate === '2';
+            return (eng1Running || eng2Running || eng3Running || eng4Running || !isOnGround) && refuelRate === '2';
         }
         return true;
-    }, [eng1Running, eng4Running, isOnGround, refuelRate, gsxFuelSyncEnabled, gsxFuelHoseConnected]);
+    }, [eng1Running, eng2Running, eng3Running, eng4Running, isOnGround, refuelRate, gsxFuelSyncEnabled, gsxFuelHoseConnected]);
 
     const updateDesiredFuel = (newDesiredFuelKg: number) => {
         if (newDesiredFuelKg > TOTAL_MAX_FUEL_KG) {
@@ -296,6 +258,22 @@ export const A380Fuel: React.FC<FuelProps> = ({
             setRefuelStartedByUser(!refuelStartedByUser);
         }
     }, [refuelStartedByUser]);
+
+    const formatRefuelStatusLabel = () => {
+        if (airplaneCanRefuel()) {
+            if (round(fuelDesiredKg) === totalFuelWeightKg) {
+                return `(${t('Ground.Fuel.Completed')})`;
+            }
+            if (refuelStartedByUser) {
+                return (fuelDesiredKg > totalFuelWeightKg) ? `(${t('Ground.Fuel.Refueling')}...)` : `(${t('Ground.Fuel.Defueling')}...)`;
+            }
+            return `(${t('Ground.Fuel.ReadyToStart')})`;
+        }
+        if (refuelStartedByUser) {
+            setRefuelStartedByUser(false);
+        }
+        return gsxFuelSyncEnabled === 1 ? `(${t('Ground.Fuel.GSXFuelSyncEnabled')})` : `(${t('Ground.Fuel.Unavailable')})`;
+    };
 
     const formatRefuelStatusClass = useCallback(() => {
         if (airplaneCanRefuel()) {
@@ -552,19 +530,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
                             <td className="text-md my-2 whitespace-nowrap px-2 font-mono font-light">
 
                                 <ValueUnitDisplay value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)} padTo={6} unit={massUnitForDisplay} />
-                                {/*
-                                <ValueInput
-                                    min={0}
-                                    max={Math.ceil(Units.kilogramToUser(TRIM_TANK_MAX_KG))}
-                                    value={Units.kilogramToUser(trimGal * FUEL_GALLONS_TO_KG)}
-                                    onBlur={(x) => {
-                                        if (!Number.isNaN(parseInt(x) || parseInt(x) === 0)) {
-                                            setTrimTarget(Units.userToKilogram(parseInt(x)) / FUEL_GALLONS_TO_KG);
-                                        }
-                                    }}
-                                    unit={massUnitForDisplay}
-                                />
-                                */}
                             </td>
                         </tr>
                     </tbody>
@@ -576,7 +541,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                         <div className="flex flex-row items-center justify-between">
                             <div className="flex flex-row items-center space-x-3">
                                 <h2 className="font-medium">{t('Ground.Fuel.Refuel')}</h2>
-                                <p className="text-theme-accent" />
+                                <p className={formatRefuelStatusClass()}>{formatRefuelStatusLabel()}</p>
                             </div>
                             {/*
                             // TODO: Implement

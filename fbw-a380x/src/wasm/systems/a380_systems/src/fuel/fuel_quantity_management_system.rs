@@ -59,6 +59,7 @@ impl RefuelPanelInput {
         Self {
             total_desired_fuel_id: context.get_identifier("FUEL_DESIRED".to_owned()),
             total_desired_fuel_input: Mass::default(),
+
             refuel_status_id: context.get_identifier("REFUEL_STARTED_BY_USR".to_owned()),
             refuel_status: false,
 
@@ -78,6 +79,10 @@ impl RefuelPanelInput {
             engine_3_state: EngineState::Off,
             engine_4_state: EngineState::Off,
         }
+    }
+
+    fn set_total_desired_fuel_input(&mut self, fuel: Mass) {
+        self.total_desired_fuel_input = fuel;
     }
 
     fn total_desired_fuel_input(&self) -> Mass {
@@ -122,6 +127,10 @@ impl SimulationElement for RefuelPanelInput {
 
     fn write(&self, writer: &mut SimulatorWriter) {
         writer.write(&self.refuel_status_id, self.refuel_status);
+        writer.write(
+            &self.total_desired_fuel_id,
+            self.total_desired_fuel_input.get::<kilogram>(),
+        );
     }
 }
 
@@ -147,6 +156,10 @@ impl IntegratedRefuelPanel {
 
     fn refuel_status(&self) -> bool {
         self.input.refuel_status()
+    }
+
+    fn set_fuel_desired(&mut self, fuel: Mass) {
+        self.input.set_total_desired_fuel_input(fuel)
     }
 
     fn set_refuel_status(&mut self, status: bool) {
@@ -175,25 +188,21 @@ impl SimulationElement for IntegratedRefuelPanel {
 pub struct CoreProcessingInputsOutputsCommandModule {
     is_powered: bool,
     powered_by: ElectricalBusType,
-    fuel_total_weight: Mass,
-    fuel_total_weight_id: VariableIdentifier,
 
     refuel_driver: RefuelDriver,
 }
 impl CoreProcessingInputsOutputsCommandModule {
-    pub fn new(context: &mut InitContext, powered_by: ElectricalBusType, max_fuel: Mass) -> Self {
+    pub fn new(context: &mut InitContext, powered_by: ElectricalBusType) -> Self {
         Self {
             is_powered: false,
             powered_by,
-            fuel_total_weight_id: context.get_identifier("FUEL TOTAL QUANTITY WEIGHT".to_owned()),
-            fuel_total_weight: Mass::default(),
             refuel_driver: RefuelDriver::new(),
         }
     }
 
     pub fn update(
         &mut self,
-        delta_time: Duration,
+        context: &UpdateContext,
         fuel_system: &mut FuelSystem<11>,
         refuel_panel_input: &mut IntegratedRefuelPanel,
     ) {
@@ -201,12 +210,17 @@ impl CoreProcessingInputsOutputsCommandModule {
         let desired_quantities =
             self.calculate_auto_refuel(refuel_panel_input.total_desired_fuel());
 
+        if !context.is_sim_ready() {
+            refuel_panel_input.set_fuel_desired(fuel_system.total_load());
+        }
+
         match refuel_panel_input.refuel_rate() {
             RefuelRate::Real => {
+                // TODO: Uncomment when full FQMS implemented
                 // if self.is_powered &&
                 if refuel_panel_input.refuel_is_enabled() {
                     self.refuel_driver.execute_timed_refuel(
-                        delta_time,
+                        context.delta(),
                         false,
                         fuel_system,
                         refuel_panel_input,
@@ -215,11 +229,11 @@ impl CoreProcessingInputsOutputsCommandModule {
                 }
             }
             RefuelRate::Fast => {
+                // TODO: Uncomment when full FQMS implemented
                 // if self.is_powered &&
                 if refuel_panel_input.refuel_is_enabled() {
-                    println!("Fast Time refueling...");
                     self.refuel_driver.execute_timed_refuel(
-                        delta_time,
+                        context.delta(),
                         true,
                         fuel_system,
                         refuel_panel_input,
@@ -350,9 +364,6 @@ impl CoreProcessingInputsOutputsCommandModule {
     }
 }
 impl SimulationElement for CoreProcessingInputsOutputsCommandModule {
-    fn read(&mut self, reader: &mut SimulatorReader) {
-        self.fuel_total_weight = reader.read(&self.fuel_total_weight_id);
-    }
     fn receive_power(&mut self, buses: &impl ElectricalBuses) {
         self.is_powered = buses.is_powered(self.powered_by)
     }
@@ -382,14 +393,8 @@ impl RefuelDriver {
         let speed_multi = if is_fast { Self::FAST_SPEED_FACTOR } else { 1. };
 
         let t = delta_time.as_millis() as f64;
-        println!("Delta Time {}", t);
         let max_tick_delta_fuel: Mass = Mass::new::<kilogram>(
             t * Self::WING_FUELRATE_GAL_SEC * speed_multi * fuel::FUEL_GALLONS_TO_KG / 1000.,
-        );
-
-        println!(
-            "max_tick_delta_fuel: {}",
-            max_tick_delta_fuel.get::<kilogram>()
         );
 
         // Naive method, move fuel from every tank, limit to max_delta
@@ -436,7 +441,6 @@ impl RefuelDriver {
         );
 
         if left_resolve && right_resolve {
-            println!("Left and right resolved!");
             refuel_panel_input.set_refuel_status(false);
         }
     }
@@ -468,19 +472,12 @@ impl RefuelDriver {
             if delta > remaining_delta {
                 fuel_system
                     .set_tank_quantity(tank as usize, current_quantity + sign * remaining_delta);
-                println!(
-                    "Tank {:?} : {:?} kg",
-                    tank,
-                    current_quantity + sign * remaining_delta
-                );
-                println!("Exited loop!");
                 return false;
             } else {
                 fuel_system.set_tank_quantity(tank as usize, current_quantity + sign * delta);
             }
             remaining_delta -= delta;
         }
-        println!("Never exited loop!");
         true
     }
 
@@ -569,14 +566,6 @@ pub struct A380FuelQuantityManagementSystem {
 }
 impl A380FuelQuantityManagementSystem {
     pub fn new(context: &mut InitContext, fuel_tanks_info: [FuelInfo; 11]) -> Self {
-        let total_max_fuel_quantity = Mass::new::<kilogram>(
-            fuel_tanks_info
-                .iter()
-                .map(|f| f.total_capacity_gallons)
-                .sum::<f64>()
-                * fuel::FUEL_GALLONS_TO_KG,
-        );
-
         let fuel_tanks = fuel_tanks_info.map(|f| {
             FuelTank::new(
                 context,
@@ -594,7 +583,6 @@ impl A380FuelQuantityManagementSystem {
             cpiom_command_f1: CoreProcessingInputsOutputsCommandModule::new(
                 context,
                 ElectricalBusType::DirectCurrentEssential, // 501PP
-                total_max_fuel_quantity,
             ),
             integrated_refuel_panel: IntegratedRefuelPanel::new(
                 context,
@@ -605,7 +593,7 @@ impl A380FuelQuantityManagementSystem {
 
     pub fn update(&mut self, context: &UpdateContext) {
         self.cpiom_command_f1.update(
-            context.delta(),
+            context,
             &mut self.fuel_system,
             &mut self.integrated_refuel_panel,
         );
