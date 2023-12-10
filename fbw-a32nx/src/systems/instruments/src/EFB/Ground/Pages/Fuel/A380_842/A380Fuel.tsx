@@ -135,7 +135,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
     const [trimGal] = useSimVar('FUELSYSTEM TANK QUANTITY:11', 'Gallons', 2_000);
     const [totalFuelWeightKg] = useSimVar('FUEL TOTAL QUANTITY WEIGHT', 'Kilograms', 2_000);
 
-    const [fuelDesiredPercent, setFuelDesiredPercent] = useSimVar('L:A32NX_FUEL_DESIRED_PERCENT', 'Number', 2_000);
     const [fuelDesiredKg, setFuelDesiredKg] = useSimVar('L:A32NX_FUEL_DESIRED', 'Kilograms', 2_000);
     const [refuelStartedByUser, setRefuelStartedByUser] = useSimVar('L:A32NX_REFUEL_STARTED_BY_USR', 'Bool', 2_000);
 
@@ -145,8 +144,6 @@ export const A380Fuel: React.FC<FuelProps> = ({
     // GSX
     const [gsxFuelSyncEnabled] = usePersistentNumberProperty('GSX_FUEL_SYNC', 0);
     const [gsxFuelHoseConnected] = useSimVar('L:FSDT_GSX_FUELHOSE_CONNECTED', 'Number');
-
-    const canRefuel = () => !(eng1Running || eng4Running || !isOnGround);
 
     useEffect(() => {
         // GSX
@@ -169,9 +166,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
         setShowSimbriefButton(simbriefDataLoaded);
     }, [fuelDesiredKg, simbriefDataLoaded, gsxFuelSyncEnabled]);
 
-    useEffect(() => {
-        setFuelDesiredPercent((fuelDesiredKg / TOTAL_MAX_FUEL_KG) * 100);
-    }, [fuelDesiredKg]);
+    const canRefuel = useCallback(() => !(eng1Running || eng2Running || eng3Running || eng4Running || !isOnGround), [eng1Running, eng2Running, eng3Running, eng4Running, isOnGround]);
 
     const airplaneCanRefuel = useCallback(() => {
         if (refuelRate !== '2') {
@@ -197,15 +192,12 @@ export const A380Fuel: React.FC<FuelProps> = ({
         }
 
         setFuelDesiredKg(newDesiredFuelKg);
-        setFuelDesiredPercent((newDesiredFuelKg / TOTAL_MAX_FUEL_KG) * 100);
     };
 
-    // TODO: Remove
     const updateDesiredFuelPercent = (percent: number) => {
         if (percent < 0.5) {
             percent = 0;
         }
-        setFuelDesiredPercent(percent);
         const fuel = Math.round(TOTAL_MAX_FUEL_KG * (percent / 100));
         updateDesiredFuel(fuel);
     };
@@ -551,7 +543,7 @@ export const A380Fuel: React.FC<FuelProps> = ({
                         <div className="flex flex-row items-center space-x-32">
                             <Slider
                                 style={{ width: '28rem' }}
-                                value={fuelDesiredPercent}
+                                value={(fuelDesiredKg / TOTAL_MAX_FUEL_KG) * 100}
                                 onChange={updateDesiredFuelPercent}
                             />
                             <div className="flex flex-row">
@@ -587,17 +579,16 @@ export const A380Fuel: React.FC<FuelProps> = ({
             <div className="border-theme-accent absolute bottom-0 right-6 flex flex-col items-center justify-center space-y-2 overflow-x-hidden rounded-2xl border px-6 py-3">
                 <h2 className="flex font-medium">{t('Ground.Fuel.RefuelTime')}</h2>
                 <SelectGroup>
-                    <SelectItem selected={airplaneCanRefuel() ? refuelRate === '2' : !airplaneCanRefuel()} onSelect={() => setRefuelRate('2')}>{t('Settings.Instant')}</SelectItem>
+                    <SelectItem selected={canRefuel() ? refuelRate === '2' : !canRefuel()} onSelect={() => setRefuelRate('2')}>{t('Settings.Instant')}</SelectItem>
 
-                    <TooltipWrapper text={`${!airplaneCanRefuel() && t('Ground.Fuel.TT.AircraftMustBeColdAndDarkToChangeRefuelTimes')}`}>
+                    <TooltipWrapper text={!canRefuel() ? `${t('Ground.Fuel.TT.AircraftMustBeColdAndDarkToChangeRefuelTimes')}` : ''}>
                         <div>
-                            <SelectItem className={`${!airplaneCanRefuel() && 'opacity-20'}`} disabled={!airplaneCanRefuel()} selected={refuelRate === '1'} onSelect={() => setRefuelRate('1')}>{t('Settings.Fast')}</SelectItem>
+                            <SelectItem className={`${!canRefuel() && 'opacity-20'}`} disabled={!canRefuel()} selected={refuelRate === '1'} onSelect={() => setRefuelRate('1')}>{t('Settings.Fast')}</SelectItem>
                         </div>
                     </TooltipWrapper>
-
-                    <TooltipWrapper text={`${!airplaneCanRefuel() && t('Ground.Fuel.TT.AircraftMustBeColdAndDarkToChangeRefuelTimes')}`}>
+                    <TooltipWrapper text={!canRefuel() ? `${t('Ground.Fuel.TT.AircraftMustBeColdAndDarkToChangeRefuelTimes')}` : ''}>
                         <div>
-                            <SelectItem className={`${!airplaneCanRefuel() && 'opacity-20'}`} disabled={!airplaneCanRefuel()} selected={refuelRate === '0'} onSelect={() => setRefuelRate('0')}>{t('Settings.Real')}</SelectItem>
+                            <SelectItem className={`${!canRefuel() && 'opacity-20'}`} disabled={!canRefuel()} selected={refuelRate === '0'} onSelect={() => setRefuelRate('0')}>{t('Settings.Real')}</SelectItem>
                         </div>
                     </TooltipWrapper>
                 </SelectGroup>
