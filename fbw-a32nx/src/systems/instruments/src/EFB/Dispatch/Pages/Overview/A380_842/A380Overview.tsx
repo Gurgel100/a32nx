@@ -7,7 +7,7 @@ import { IconPlane } from '@tabler/icons';
 import { Box, LightningFill, PeopleFill, Rulers, Speedometer2 } from 'react-bootstrap-icons';
 import { useSimVar, Units } from '@flybywiresim/fbw-sdk';
 import { t } from '../../../../translation';
-import { NoseOutline } from '../../../../Assets/NoseOutline';
+import { A380NoseOutline } from '../../../../Assets/NoseOutline';
 
 interface InformationEntryProps {
     title: string;
@@ -16,7 +16,7 @@ interface InformationEntryProps {
 
 const InformationEntry: FC<InformationEntryProps> = ({ children, title, info }) => (
     <div>
-        <div className="flex flex-row items-center space-x-4 text-theme-highlight">
+        <div className="text-theme-highlight flex flex-row items-center space-x-4">
             {children}
             <p className="whitespace-nowrap">{title}</p>
         </div>
@@ -45,21 +45,21 @@ export const A380Overview = () => {
     };
 
     return (
-        <div className="overflow-hidden p-6 mr-3 w-min h-content-section-reduced rounded-lg border-2 border-theme-accent">
-            <h1 className="font-bold">Airbus A380-800</h1>
+        <div className="h-content-section-reduced border-theme-accent mr-3 w-min overflow-hidden rounded-lg border-2 p-6">
+            <h1 className="font-bold">Airbus A380</h1>
             <p>{airline}</p>
 
-            <div className="flex justify-center items-center mt-6">
-                <NoseOutline className="mr-32 -ml-96 h-64 text-theme-text flip-horizontal" />
+            <div className="mt-6 flex items-center justify-center">
+                <A380NoseOutline className="text-theme-text -ml-56 mr-32 h-64" />
             </div>
 
-            <div className="flex flex-row mt-8 space-x-16">
+            <div className="mt-8 flex flex-row space-x-16">
                 <div className="flex flex-col space-y-8">
                     <InformationEntry title={t('Dispatch.Overview.Model')} info="A380-842 [A388]">
                         <IconPlane className="fill-current" size={23} stroke={1.5} strokeLinejoin="miter" />
                     </InformationEntry>
 
-                    <InformationEntry title={t('Dispatch.Overview.Range')} info={getConvertedInfo(9200, 'distance')}>
+                    <InformationEntry title={t('Dispatch.Overview.Range')} info={getConvertedInfo(8000, 'distance')}>
                         <Rulers size={23} />
                     </InformationEntry>
 
@@ -67,7 +67,7 @@ export const A380Overview = () => {
                         <Box size={23} />
                     </InformationEntry>
 
-                    <InformationEntry title={t('Dispatch.Overview.MZFW')} info={getConvertedInfo(361000, 'weight')}>
+                    <InformationEntry title={t('Dispatch.Overview.MZFW')} info={getConvertedInfo(373000, 'weight')}>
                         <Box size={23} />
                     </InformationEntry>
 
@@ -76,7 +76,7 @@ export const A380Overview = () => {
                     </InformationEntry>
                 </div>
                 <div className="flex flex-col space-y-8">
-                    <InformationEntry title={t('Dispatch.Overview.Engines')} info="RR Trent 972-84">
+                    <InformationEntry title={t('Dispatch.Overview.Engines')} info="RR Trent 972B-84">
                         <LightningFill size={23} />
                     </InformationEntry>
 
@@ -84,11 +84,11 @@ export const A380Overview = () => {
                         <Speedometer2 size={23} />
                     </InformationEntry>
 
-                    <InformationEntry title={t('Dispatch.Overview.MTOW')} info={getConvertedInfo(560000, 'weight')}>
+                    <InformationEntry title={t('Dispatch.Overview.MTOW')} info={getConvertedInfo(510000, 'weight')}>
                         <Box size={23} />
                     </InformationEntry>
 
-                    <InformationEntry title={t('Dispatch.Overview.MaximumFuelCapacity')} info={getConvertedInfo(324339, 'volume')}>
+                    <InformationEntry title={t('Dispatch.Overview.MaximumFuelCapacity')} info={getConvertedInfo(323546, 'volume')}>
                         <Box size={23} />
                     </InformationEntry>
 

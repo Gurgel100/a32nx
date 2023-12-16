@@ -7,7 +7,7 @@ import { IconPlane } from '@tabler/icons';
 import { Box, LightningFill, PeopleFill, Rulers, Speedometer2 } from 'react-bootstrap-icons';
 import { useSimVar, Units } from '@flybywiresim/fbw-sdk';
 import { t } from '../../../../translation';
-import { NoseOutline } from '../../../../Assets/NoseOutline';
+import { A320NoseOutline } from '../../../../Assets/NoseOutline';
 
 interface InformationEntryProps {
     title: string;
@@ -16,7 +16,7 @@ interface InformationEntryProps {
 
 const InformationEntry: FC<InformationEntryProps> = ({ children, title, info }) => (
     <div>
-        <div className="flex flex-row items-center space-x-4 text-theme-highlight">
+        <div className="text-theme-highlight flex flex-row items-center space-x-4">
             {children}
             <p className="whitespace-nowrap">{title}</p>
         </div>
@@ -45,15 +45,15 @@ export const A320Overview = () => {
     };
 
     return (
-        <div className="overflow-hidden p-6 mr-3 w-min h-content-section-reduced rounded-lg border-2 border-theme-accent">
+        <div className="h-content-section-reduced border-theme-accent mr-3 w-min overflow-hidden rounded-lg border-2 p-6">
             <h1 className="font-bold">Airbus A320neo</h1>
             <p>{airline}</p>
 
-            <div className="flex justify-center items-center mt-6">
-                <NoseOutline className="mr-32 -ml-96 h-64 text-theme-text flip-horizontal" />
+            <div className="mt-6 flex items-center justify-center">
+                <NoseOutline className="text-theme-text flip-horizontal -ml-96 mr-32 h-64" />
             </div>
 
-            <div className="flex flex-row mt-8 space-x-16">
+            <div className="mt-8 flex flex-row space-x-16">
                 <div className="flex flex-col space-y-8">
                     <InformationEntry title={t('Dispatch.Overview.Model')} info="A320-251N [A20N]">
                         <IconPlane className="fill-current" size={23} stroke={1.5} strokeLinejoin="miter" />
