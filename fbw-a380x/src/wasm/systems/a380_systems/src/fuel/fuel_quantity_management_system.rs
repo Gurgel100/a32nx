@@ -192,7 +192,7 @@ pub struct CoreProcessingInputsOutputsCommandModule {
     refuel_driver: RefuelDriver,
 }
 impl CoreProcessingInputsOutputsCommandModule {
-    pub fn new(context: &mut InitContext, powered_by: ElectricalBusType) -> Self {
+    pub fn new(_context: &mut InitContext, powered_by: ElectricalBusType) -> Self {
         Self {
             is_powered: false,
             powered_by,
@@ -357,10 +357,6 @@ impl CoreProcessingInputsOutputsCommandModule {
         quantities.insert(A380FuelTankType::Trim, trim_fuel);
 
         quantities
-    }
-
-    fn is_powered(&self) -> bool {
-        self.is_powered
     }
 }
 impl SimulationElement for CoreProcessingInputsOutputsCommandModule {
