@@ -227,17 +227,10 @@ export const A380Fuel: React.FC<FuelProps> = ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const handleSimbriefFuelSync = () => {
         let fuelToLoad = -1;
-
-        if (Units.usingMetric) {
-            if (simbriefUnits === 'kgs') {
-                fuelToLoad = roundUpNearest100(simbriefPlanRamp);
-            } else {
-                fuelToLoad = roundUpNearest100(Units.poundToKilogram(simbriefPlanRamp));
-            }
-        } else if (simbriefUnits === 'kgs') {
-            fuelToLoad = roundUpNearest100(Units.kilogramToPound(simbriefPlanRamp));
-        } else {
+        if (simbriefUnits === 'kgs') {
             fuelToLoad = roundUpNearest100(simbriefPlanRamp);
+        } else {
+            fuelToLoad = roundUpNearest100(Units.poundToKilogram(simbriefPlanRamp));
         }
 
         updateDesiredFuel(fuelToLoad);
