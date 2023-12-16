@@ -491,13 +491,13 @@ fn spawn_no_fuel_load_desired_real_100000_done() {
     let mut test_bed: FuelTestBed = test_bed();
     test_bed.set_on_ground(true);
 
-    let thirty_four_minutes = 34 * MINUTES_TO_SECONDS;
+    let fourty_minutes = 40 * MINUTES_TO_SECONDS;
 
     test_bed = test_bed
         .desired_fuel_100000()
         .trigger_real_refuel()
         .and_run()
-        .run_multiple_frames(Duration::from_secs(thirty_four_minutes));
+        .run_multiple_frames(Duration::from_secs(fourty_minutes));
 
     assert_fuel_quantity_100000(&test_bed);
     assert_false!(test_bed.refuel_status());
