@@ -50,7 +50,7 @@ export const A320Overview = () => {
             <p>{airline}</p>
 
             <div className="mt-6 flex items-center justify-center">
-                <NoseOutline className="text-theme-text flip-horizontal -ml-96 mr-32 h-64" />
+                <A320NoseOutline className="text-theme-text flip-horizontal -ml-96 mr-32 h-64" />
             </div>
 
             <div className="mt-8 flex flex-row space-x-16">
