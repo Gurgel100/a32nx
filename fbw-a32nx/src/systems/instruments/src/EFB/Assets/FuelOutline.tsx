@@ -41,7 +41,7 @@ export const A380FuelOutline = ({ className, feed1Percent, feed2Percent, feed3Pe
     rightInnerPercent: number, rightMidPercent: number, rightOuterPercent: number,
     trimPercent: number
 }) => (
-    <svg width="864" height="664" xmlns="http://www.w3.org/2000/svg" className={className} fill="none" stroke="white" viewBox="0 200 864 864">
+    <svg width="864" height="664" xmlns="http://www.w3.org/2000/svg" className={className} stroke="currentColor" fill="none" viewBox="0 200 864 864">
         <defs>
             <style>
                 {
