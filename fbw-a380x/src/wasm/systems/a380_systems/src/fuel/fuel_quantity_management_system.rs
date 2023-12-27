@@ -158,6 +158,7 @@ impl IntegratedRefuelPanel {
         self.input.refuel_status()
     }
 
+    #[allow(dead_code)]
     fn set_fuel_desired(&mut self, fuel: Mass) {
         self.input.set_total_desired_fuel_input(fuel)
     }
@@ -210,9 +211,10 @@ impl CoreProcessingInputsOutputsCommandModule {
         let desired_quantities =
             self.calculate_auto_refuel(refuel_panel_input.total_desired_fuel());
 
-        if !context.is_sim_ready() {
-            refuel_panel_input.set_fuel_desired(fuel_system.total_load());
-        }
+        // TODO: Uncomment when IS_SIM_READY variable is implemented
+        // if !context.is_sim_ready() {
+        //    refuel_panel_input.set_fuel_desired(fuel_system.total_load());
+        //}
 
         match refuel_panel_input.refuel_rate() {
             RefuelRate::Real => {
@@ -549,7 +551,12 @@ impl RefuelDriver {
                 .get(&A380FuelTankType::Trim)
                 .unwrap_or(&Mass::default()),
         );
-        refuel_panel_input.set_refuel_status(false);
+
+        if (fuel_system.total_load() - refuel_panel_input.total_desired_fuel()).abs()
+            < Mass::new::<kilogram>(1.)
+        {
+            refuel_panel_input.set_refuel_status(false);
+        }
     }
 }
 impl SimulationElement for RefuelDriver {}

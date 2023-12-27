@@ -2,6 +2,7 @@ use std::error::Error;
 
 use msfs::sim_connect;
 use msfs::{sim_connect::SimConnect, sim_connect::SIMCONNECT_OBJECT_ID_USER};
+use systems::shared::to_bool;
 
 use systems_wasm::aspects::{MsfsAspectBuilder, ObjectWrite, VariablesToObject};
 use systems_wasm::{set_data_on_sim_object, Variable};
@@ -69,9 +70,24 @@ struct Fuel {
 
 impl VariablesToObject for Fuel {
     fn variables(&self) -> Vec<Variable> {
-        (1..=11)
-            .map(|i| Variable::aspect(&format!("FUEL_TANK_QUANTITY_{i}")))
-            .collect::<Vec<_>>()
+        // (1..=11)
+        //    .map(|i| Variable::aspect(&format!("FUEL_TANK_QUANTITY_{i}")))
+        //    .collect::<Vec<_>>()
+
+        vec![
+            Variable::aspect("FUEL_TANK_QUANTITY_1"),
+            Variable::aspect("FUEL_TANK_QUANTITY_2"),
+            Variable::aspect("FUEL_TANK_QUANTITY_3"),
+            Variable::aspect("FUEL_TANK_QUANTITY_4"),
+            Variable::aspect("FUEL_TANK_QUANTITY_5"),
+            Variable::aspect("FUEL_TANK_QUANTITY_6"),
+            Variable::aspect("FUEL_TANK_QUANTITY_7"),
+            Variable::aspect("FUEL_TANK_QUANTITY_8"),
+            Variable::aspect("FUEL_TANK_QUANTITY_9"),
+            Variable::aspect("FUEL_TANK_QUANTITY_10"),
+            Variable::aspect("FUEL_TANK_QUANTITY_11"),
+            Variable::named("REFUEL_STARTED_BY_USR"),
+        ]
     }
 
     fn write(&mut self, values: Vec<f64>) -> ObjectWrite {
@@ -86,7 +102,8 @@ impl VariablesToObject for Fuel {
         self.fuel_9 = values[8];
         self.fuel_10 = values[9];
         self.fuel_11 = values[10];
-        ObjectWrite::default()
+
+        ObjectWrite::on(to_bool(values[11]))
     }
 
     set_data_on_sim_object!();

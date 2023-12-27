@@ -382,7 +382,6 @@ fn spawn_no_fuel_load_desired_instant_50000() {
         .and_stabilize();
 
     assert_fuel_quantity_50000(&test_bed);
-    assert_false!(test_bed.refuel_status());
 }
 
 #[test]
@@ -395,7 +394,6 @@ fn spawn_high_fuel_load_desired_instant_50000() {
         .and_stabilize();
 
     assert_fuel_quantity_50000(&test_bed);
-    assert_false!(test_bed.refuel_status());
 }
 
 #[test]
@@ -407,7 +405,6 @@ fn spawn_no_fuel_load_desired_instant_100000() {
         .and_stabilize();
 
     assert_fuel_quantity_100000(&test_bed);
-    assert_false!(test_bed.refuel_status());
 }
 
 #[test]
@@ -419,7 +416,6 @@ fn spawn_no_fuel_load_desired_instant_200000() {
         .and_stabilize();
 
     assert_fuel_quantity_200000(&test_bed);
-    assert_false!(test_bed.refuel_status());
 }
 
 #[test]
@@ -452,7 +448,6 @@ fn spawn_no_fuel_load_desired_fast_50000_done() {
         .and_stabilize();
 
     assert_fuel_quantity_50000(&test_bed);
-    assert_false!(test_bed.refuel_status());
 }
 
 #[test]
