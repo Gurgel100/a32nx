@@ -41,7 +41,6 @@ pub enum A380FuelTankType {
     Trim,
 }
 impl A380FuelTankType {
-    #[cfg(test)]
     pub fn iterator() -> impl Iterator<Item = A380FuelTankType> {
         [
             A380FuelTankType::LeftOuter,

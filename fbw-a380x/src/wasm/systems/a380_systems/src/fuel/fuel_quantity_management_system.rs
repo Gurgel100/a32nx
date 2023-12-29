@@ -44,15 +44,8 @@ pub struct RefuelPanelInput {
     is_on_ground_id: VariableIdentifier,
     is_on_ground: bool,
 
-    engine_1_state_id: VariableIdentifier,
-    engine_2_state_id: VariableIdentifier,
-    engine_3_state_id: VariableIdentifier,
-    engine_4_state_id: VariableIdentifier,
-
-    engine_1_state: EngineState,
-    engine_2_state: EngineState,
-    engine_3_state: EngineState,
-    engine_4_state: EngineState,
+    engine_state_ids: [VariableIdentifier; 4],
+    engine_states: [EngineState; 4],
 }
 impl RefuelPanelInput {
     pub fn new(context: &mut InitContext) -> Self {
@@ -70,14 +63,9 @@ impl RefuelPanelInput {
             is_on_ground_id: context.get_identifier("SIM ON GROUND".to_owned()),
             is_on_ground: false,
 
-            engine_1_state_id: context.get_identifier("ENGINE_STATE:1".to_owned()),
-            engine_2_state_id: context.get_identifier("ENGINE_STATE:2".to_owned()),
-            engine_3_state_id: context.get_identifier("ENGINE_STATE:3".to_owned()),
-            engine_4_state_id: context.get_identifier("ENGINE_STATE:4".to_owned()),
-            engine_1_state: EngineState::Off,
-            engine_2_state: EngineState::Off,
-            engine_3_state: EngineState::Off,
-            engine_4_state: EngineState::Off,
+            engine_state_ids: [1, 2, 3, 4]
+                .map(|id| context.get_identifier(format!("ENGINE_STATE:{id}"))),
+            engine_states: [EngineState::Off; 4],
         }
     }
 
@@ -103,10 +91,10 @@ impl RefuelPanelInput {
 
     fn refuel_is_enabled(&self) -> bool {
         self.refuel_status
-            && self.engine_1_state == EngineState::Off
-            && self.engine_2_state == EngineState::Off
-            && self.engine_3_state == EngineState::Off
-            && self.engine_4_state == EngineState::Off
+            && self
+                .engine_states
+                .iter()
+                .all(|state| *state == EngineState::Off)
             && self.is_on_ground
             && self.ground_speed < Velocity::new::<knot>(0.1)
     }
@@ -119,10 +107,13 @@ impl SimulationElement for RefuelPanelInput {
         self.refuel_rate_setting = reader.read(&self.refuel_rate_setting_id);
         self.ground_speed = reader.read(&self.ground_speed_id);
         self.is_on_ground = reader.read(&self.is_on_ground_id);
-        self.engine_1_state = reader.read(&self.engine_1_state_id);
-        self.engine_2_state = reader.read(&self.engine_2_state_id);
-        self.engine_3_state = reader.read(&self.engine_3_state_id);
-        self.engine_4_state = reader.read(&self.engine_4_state_id);
+        for (id, state) in self
+            .engine_state_ids
+            .iter()
+            .zip(self.engine_states.iter_mut())
+        {
+            *state = reader.read(id);
+        }
     }
 
     fn write(&self, writer: &mut SimulatorWriter) {
@@ -259,21 +250,21 @@ impl CoreProcessingInputsOutputsCommandModule {
         &mut self,
         total_desired_fuel: Mass,
     ) -> HashMap<A380FuelTankType, Mass> {
-        let a: Mass = Mass::new::<kilogram>(18000.);
-        let b: Mass = Mass::new::<kilogram>(26000.);
-        let c: Mass = Mass::new::<kilogram>(36000.);
-        let d: Mass = Mass::new::<kilogram>(47000.);
-        let e: Mass = Mass::new::<kilogram>(103788.);
-        let f: Mass = Mass::new::<kilogram>(158042.);
-        let g: Mass = Mass::new::<kilogram>(215702.);
-        let h: Mass = Mass::new::<kilogram>(223028.);
+        let a = Mass::new::<kilogram>(18000.);
+        let b = Mass::new::<kilogram>(26000.);
+        let c = Mass::new::<kilogram>(36000.);
+        let d = Mass::new::<kilogram>(47000.);
+        let e = Mass::new::<kilogram>(103788.);
+        let f = Mass::new::<kilogram>(158042.);
+        let g = Mass::new::<kilogram>(215702.);
+        let h = Mass::new::<kilogram>(223028.);
 
-        let trim_1: Mass = Mass::new::<kilogram>(4000.);
-        let trim_2: Mass = Mass::new::<kilogram>(8000.);
-        let trim_max: Mass = Mass::new::<kilogram>(19026.);
+        let trim_1 = Mass::new::<kilogram>(4000.);
+        let trim_2 = Mass::new::<kilogram>(8000.);
+        let trim_max = Mass::new::<kilogram>(19026.);
 
         // TODO: Trim tank logic
-        let trim_fuel: Mass = match total_desired_fuel {
+        let trim_fuel = match total_desired_fuel {
             x if x <= f => Mass::default(),
             x if x < f + trim_1 => total_desired_fuel - f,
             x if x <= f + trim_1 => trim_1,
@@ -284,15 +275,15 @@ impl CoreProcessingInputsOutputsCommandModule {
             _ => trim_max,
         };
 
-        let wing_fuel: Mass = total_desired_fuel - trim_fuel;
+        let wing_fuel = total_desired_fuel - trim_fuel;
 
-        let feed_a: Mass = Mass::new::<kilogram>(4500.);
-        let feed_c: Mass = Mass::new::<kilogram>(7000.);
-        let outer_feed_e: Mass = Mass::new::<kilogram>(20558.);
-        let inner_feed_e: Mass = Mass::new::<kilogram>(21836.);
-        let total_feed_e: Mass = outer_feed_e * 2. + inner_feed_e * 2.;
+        let feed_a = Mass::new::<kilogram>(4500.);
+        let feed_c = Mass::new::<kilogram>(7000.);
+        let outer_feed_e = Mass::new::<kilogram>(20558.);
+        let inner_feed_e = Mass::new::<kilogram>(21836.);
+        let total_feed_e = outer_feed_e * 2. + inner_feed_e * 2.;
 
-        let outer_feed: Mass = match wing_fuel {
+        let outer_feed = match wing_fuel {
             x if x <= a => wing_fuel / 4.,
             x if x <= b => feed_a,
             x if x <= c => feed_a + (wing_fuel - b) / 4.,
@@ -302,7 +293,7 @@ impl CoreProcessingInputsOutputsCommandModule {
             _ => outer_feed_e + (wing_fuel - h) / 10.,
         };
 
-        let inner_feed: Mass = match wing_fuel {
+        let inner_feed = match wing_fuel {
             x if x <= a => wing_fuel / 4.,
             x if x <= b => feed_a,
             x if x <= c => feed_a + (wing_fuel - b) / 4.,
@@ -312,10 +303,10 @@ impl CoreProcessingInputsOutputsCommandModule {
             _ => inner_feed_e + (wing_fuel - h) / 10.,
         };
 
-        let outer_tank_b: Mass = Mass::new::<kilogram>(4000.);
-        let outer_tank_h: Mass = Mass::new::<kilogram>(7693.);
+        let outer_tank_b = Mass::new::<kilogram>(4000.);
+        let outer_tank_h = Mass::new::<kilogram>(7693.);
 
-        let outer_tank: Mass = match wing_fuel {
+        let outer_tank = match wing_fuel {
             x if x <= a => Mass::default(),
             x if x <= b => (wing_fuel - a) / 2.,
             x if x <= g => outer_tank_b,
@@ -323,10 +314,10 @@ impl CoreProcessingInputsOutputsCommandModule {
             _ => outer_tank_h + (wing_fuel - h) / 10.,
         };
 
-        let inner_tank_d: Mass = Mass::new::<kilogram>(5500.);
-        let inner_tank_g: Mass = Mass::new::<kilogram>(34300.);
+        let inner_tank_d = Mass::new::<kilogram>(5500.);
+        let inner_tank_g = Mass::new::<kilogram>(34300.);
 
-        let inner_tank: Mass = match wing_fuel {
+        let inner_tank = match wing_fuel {
             x if x <= c => Mass::default(),
             x if x <= d => (wing_fuel - c) / 2.,
             x if x <= f => inner_tank_d,
@@ -335,9 +326,9 @@ impl CoreProcessingInputsOutputsCommandModule {
             _ => inner_tank_g + (wing_fuel - h) / 10.,
         };
 
-        let mid_tank_f: Mass = Mass::new::<kilogram>(27127.);
+        let mid_tank_f = Mass::new::<kilogram>(27127.);
 
-        let mid_tank: Mass = match wing_fuel {
+        let mid_tank = match wing_fuel {
             x if x <= e => Mass::default(),
             x if x <= f => (wing_fuel - e) / 2.,
             x if x <= h => mid_tank_f,
@@ -345,20 +336,20 @@ impl CoreProcessingInputsOutputsCommandModule {
         };
         // TODO: maximum amount per tick and use efb refueling rate
 
-        let mut quantities = HashMap::new();
-        quantities.insert(A380FuelTankType::LeftOuter, outer_tank);
-        quantities.insert(A380FuelTankType::RightOuter, outer_tank);
-        quantities.insert(A380FuelTankType::LeftMid, mid_tank);
-        quantities.insert(A380FuelTankType::RightMid, mid_tank);
-        quantities.insert(A380FuelTankType::LeftInner, inner_tank);
-        quantities.insert(A380FuelTankType::RightInner, inner_tank);
-        quantities.insert(A380FuelTankType::FeedOne, outer_feed);
-        quantities.insert(A380FuelTankType::FeedFour, outer_feed);
-        quantities.insert(A380FuelTankType::FeedTwo, inner_feed);
-        quantities.insert(A380FuelTankType::FeedThree, inner_feed);
-        quantities.insert(A380FuelTankType::Trim, trim_fuel);
-
-        quantities
+        [
+            (A380FuelTankType::LeftOuter, outer_tank),
+            (A380FuelTankType::RightOuter, outer_tank),
+            (A380FuelTankType::LeftMid, mid_tank),
+            (A380FuelTankType::RightMid, mid_tank),
+            (A380FuelTankType::LeftInner, inner_tank),
+            (A380FuelTankType::RightInner, inner_tank),
+            (A380FuelTankType::FeedOne, outer_feed),
+            (A380FuelTankType::FeedFour, outer_feed),
+            (A380FuelTankType::FeedTwo, inner_feed),
+            (A380FuelTankType::FeedThree, inner_feed),
+            (A380FuelTankType::Trim, trim_fuel),
+        ]
+        .into()
     }
 }
 impl SimulationElement for CoreProcessingInputsOutputsCommandModule {
@@ -390,9 +381,9 @@ impl RefuelDriver {
     ) {
         let speed_multi = if is_fast { Self::FAST_SPEED_FACTOR } else { 1. };
 
-        let t = delta_time.as_millis() as f64;
+        let t = delta_time.as_secs_f64();
         let max_tick_delta_fuel: Mass = Mass::new::<kilogram>(
-            t * Self::WING_FUELRATE_GAL_SEC * speed_multi * fuel::FUEL_GALLONS_TO_KG / 1000.,
+            t * Self::WING_FUELRATE_GAL_SEC * speed_multi * fuel::FUEL_GALLONS_TO_KG,
         );
 
         // Naive method, move fuel from every tank, limit to max_delta
@@ -467,12 +458,12 @@ impl RefuelDriver {
             };
 
             let delta = (desired_quantity - current_quantity).abs();
+            fuel_system.set_tank_quantity(
+                tank as usize,
+                current_quantity + sign * delta.min(remaining_delta),
+            );
             if delta > remaining_delta {
-                fuel_system
-                    .set_tank_quantity(tank as usize, current_quantity + sign * remaining_delta);
                 return false;
-            } else {
-                fuel_system.set_tank_quantity(tank as usize, current_quantity + sign * delta);
             }
             remaining_delta -= delta;
         }
@@ -485,72 +476,14 @@ impl RefuelDriver {
         refuel_panel_input: &mut IntegratedRefuelPanel,
         desired_quantities: HashMap<A380FuelTankType, Mass>,
     ) {
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::LeftOuter as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::LeftOuter)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::RightOuter as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::RightOuter)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::LeftMid as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::LeftMid)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::RightMid as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::RightMid)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::LeftInner as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::LeftInner)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::RightInner as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::RightInner)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::FeedOne as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::FeedOne)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::FeedFour as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::FeedFour)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::FeedTwo as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::FeedTwo)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::FeedThree as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::FeedThree)
-                .unwrap_or(&Mass::default()),
-        );
-        fuel_system.set_tank_quantity(
-            A380FuelTankType::Trim as usize,
-            *desired_quantities
-                .get(&A380FuelTankType::Trim)
-                .unwrap_or(&Mass::default()),
-        );
+        for tank_type in A380FuelTankType::iterator() {
+            fuel_system.set_tank_quantity(
+                tank_type as usize,
+                *desired_quantities
+                    .get(&tank_type)
+                    .unwrap_or(&Mass::default()),
+            );
+        }
 
         if (fuel_system.total_load() - refuel_panel_input.total_desired_fuel()).abs()
             < Mass::new::<kilogram>(1.)
