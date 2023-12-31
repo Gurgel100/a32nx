@@ -136,7 +136,7 @@ export class DescentGuidance {
         this.verticalState = newState;
     }
 
-    private reset() {
+    reset() {
         this.requestedVerticalMode = RequestedVerticalMode.None;
         this.targetAltitude = 0;
         this.targetVerticalSpeed = 0;
@@ -150,6 +150,7 @@ export class DescentGuidance {
         this.aircraftToDescentProfileRelation.update(distanceToEnd);
 
         if (!this.aircraftToDescentProfileRelation.isValid) {
+            this.changeState(DescentVerticalGuidanceState.InvalidProfile);
             return;
         }
 
@@ -406,5 +407,21 @@ export class DescentGuidance {
         } else if (this.isInUnderspeedCondition && airspeed > lowerLimit + 5) {
             this.isInUnderspeedCondition = false;
         }
+    }
+
+    public getDesSubmode(): RequestedVerticalMode {
+        return this.requestedVerticalMode;
+    }
+
+    public getTargetVerticalSpeed(): FeetPerMinute {
+        return this.targetVerticalSpeed;
+    }
+
+    public getLinearDeviation(): Feet | undefined {
+        if (!this.aircraftToDescentProfileRelation.isValid) {
+            return undefined;
+        }
+
+        return this.aircraftToDescentProfileRelation.computeLinearDeviation();
     }
 }

@@ -1,18 +1,13 @@
+// Copyright (c) 2021-2023 FlyByWire Simulations
+//
+// SPDX-License-Identifier: GPL-3.0
+
 import { BaseGeometryProfile } from '@fmgc/guidance/vnav/profile/BaseGeometryProfile';
 import { ConstraintReader } from '@fmgc/guidance/vnav/ConstraintReader';
 import { AtmosphericConditions } from '@fmgc/guidance/vnav/AtmosphericConditions';
-import { FlightPlans } from '@fmgc/flightplanning/FlightPlanManager';
-import { GuidanceController } from '@fmgc/guidance/GuidanceController';
 import { isAltitudeConstraintMet } from '@fmgc/guidance/vnav/descent/DescentPathBuilder';
-import {
-    AltitudeConstraint,
-    AltitudeConstraintType,
-    getAltitudeConstraintFromWaypoint,
-    getSpeedConstraintFromWaypoint,
-    PathAngleConstraint,
-    SpeedConstraint,
-    SpeedConstraintType,
-} from '../../lnav/legs';
+import { FlightPlanService } from '@fmgc/flightplanning/new/FlightPlanService';
+import { AltitudeConstraint, AltitudeConstraintType, SpeedConstraint } from '@fmgc/flightplanning/data/constraint';
 
 // TODO: Merge this with VerticalCheckpoint
 export interface VerticalWaypointPrediction {
@@ -124,11 +119,6 @@ export interface DescentAltitudeConstraint {
     constraint: AltitudeConstraint,
 }
 
-export interface ApproachPathAngleConstraint {
-    distanceFromStart: NauticalMiles,
-    pathAngle: PathAngleConstraint,
-}
-
 export interface GeographicCruiseStep {
     distanceFromStart: NauticalMiles,
     toAltitude: Feet,
@@ -140,7 +130,7 @@ export class NavGeometryProfile extends BaseGeometryProfile {
     public waypointPredictions: Map<number, VerticalWaypointPrediction> = new Map();
 
     constructor(
-        private guidanceController: GuidanceController,
+        private flightPlanService: FlightPlanService,
         private constraintReader: ConstraintReader,
         private atmosphericConditions: AtmosphericConditions,
     ) {
@@ -204,7 +194,6 @@ export class NavGeometryProfile extends BaseGeometryProfile {
      */
     private computePredictionsAtWaypoints(): Map<number, VerticalWaypointPrediction> {
         const predictions = new Map<number, VerticalWaypointPrediction>();
-        const fpm = this.guidanceController.flightPlanManager;
 
         if (!this.isReadyToDisplay) {
             return predictions;
@@ -213,17 +202,20 @@ export class NavGeometryProfile extends BaseGeometryProfile {
         const topOfDescent = this.findVerticalCheckpoint(VerticalCheckpointReason.TopOfDescent);
         const distanceToPresentPosition = this.distanceToPresentPosition;
 
-        for (let i = this.guidanceController.activeLegIndex - 1; i < fpm.getWaypointsCount(FlightPlans.Active); i++) {
-            const waypoint = fpm.getWaypoint(i, FlightPlans.Active);
-            if (!waypoint) {
+        const activePlan = this.flightPlanService.active;
+
+        for (let i = activePlan.activeLegIndex - 1; i < activePlan.firstMissedApproachLegIndex; i++) {
+            const leg = activePlan.maybeElementAt(i);
+
+            if (!leg || leg.isDiscontinuity === true) {
                 continue;
             }
 
-            const distanceFromStart = this.getDistanceFromStart(waypoint.additionalData.distanceToEnd);
+            const distanceFromStart = leg.calculated?.cumulativeDistanceWithTransitions;
             const { secondsFromPresent, altitude, speed, mach, remainingFuelOnBoard } = this.interpolateEverythingFromStart(distanceFromStart);
 
-            const altitudeConstraint = getAltitudeConstraintFromWaypoint(waypoint);
-            const speedConstraint = getSpeedConstraintFromWaypoint(waypoint);
+            const altitudeConstraint = leg.altitudeConstraint;
+            const speedConstraint = leg.speedConstraint;
 
             predictions.set(i, {
                 waypointIndex: i,
@@ -250,17 +242,7 @@ export class NavGeometryProfile extends BaseGeometryProfile {
             return true;
         }
 
-        switch (constraint.type) {
-        case SpeedConstraintType.at:
-            return Math.abs(speed - constraint.speed) < 5;
-        case SpeedConstraintType.atOrBelow:
-            return speed - constraint.speed < 5;
-        case SpeedConstraintType.atOrAbove:
-            return speed - constraint.speed > -5;
-        default:
-            console.error('Invalid speed constraint type');
-            return null;
-        }
+        return speed - constraint.speed < 5;
     }
 
     private computeAltError(predictedAltitude: Feet, constraint?: AltitudeConstraint): number {

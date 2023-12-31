@@ -10,23 +10,26 @@ class CDUDirectToPage {
         mcdu.returnPageCallback = () => {
             CDUDirectToPage.ShowPage(mcdu, directWaypoint, wptsListIndex);
         };
+
         mcdu.activeSystem = 'FMGC';
+
         let directWaypointCell = "";
         if (directWaypoint) {
             directWaypointCell = directWaypoint.ident;
-        } else if (mcdu.flightPlanManager.getCurrentFlightPlanIndex() === FlightPlans.Temporary) {
+        } else if (mcdu.flightPlanService.hasTemporary) {
             mcdu.eraseTemporaryFlightPlan(() => {
                 CDUDirectToPage.ShowPage(mcdu);
             });
             return;
         }
+
         const waypointsCell = ["", "", "", "", ""];
         let iMax = 5;
         let eraseLabel = "";
         let eraseLine = "";
         let insertLabel = "";
         let insertLine = "";
-        if (mcdu.flightPlanManager.getCurrentFlightPlanIndex() === FlightPlans.Temporary) {
+        if (mcdu.flightPlanService.hasTemporary) {
             iMax--;
             eraseLabel = "\xa0DIR TO[color]amber";
             eraseLine = "{ERASE[color]amber";
@@ -53,20 +56,39 @@ class CDUDirectToPage {
                 return;
             }
 
-            mcdu.getOrSelectWaypointByIdent(value, (w) => {
+            Fmgc.WaypointEntryUtils.getOrCreateWaypoint(mcdu, value, false).then((w) => {
                 if (w) {
                     mcdu.eraseTemporaryFlightPlan(() => {
-                        mcdu.ensureCurrentFlightPlanIsTemporary(() => {
-                            mcdu.flightPlanManager.insertDirectTo(w).then(() => {
-                                CDUDirectToPage.ShowPage(mcdu, w, wptsListIndex);
-                            });
-                        });
+                        // FIXME fm pos
+                        const ppos = {
+                            lat: SimVar.GetSimVarValue('PLANE LATITUDE', 'Degrees'),
+                            long: SimVar.GetSimVarValue('PLANE LONGITUDE', 'Degrees'),
+                        };
+
+                        // FIXME fm track
+                        const trueTrack = SimVar.GetSimVarValue('L:A32NX_ADIRS_IR_1_TRUE_TRACK', 'Number');
+                        const trueTrackWord = new Arinc429Word(trueTrack);
+
+                        if (trueTrackWord.isNormalOperation()) {
+                            mcdu.flightPlanService.directTo(ppos, trueTrackWord.value, w);
+                        }
+
+                        CDUDirectToPage.ShowPage(mcdu, w, wptsListIndex);
                     });
                 } else {
                     mcdu.setScratchpadMessage(NXSystemMessages.notInDatabase);
                 }
+            }).catch((err) => {
+                // Rethrow if error is not an FMS message to display
+                if (!err.type) {
+                    throw err;
+                }
+
+                mcdu.showFmsErrorMessage(err.type);
+                return callback(false);
             });
         };
+
         mcdu.onRightInput[2] = () => {
             mcdu.setScratchpadMessage(NXFictionalMessages.notYetImplemented);
         };
@@ -76,26 +98,49 @@ class CDUDirectToPage {
         mcdu.onRightInput[4] = () => {
             mcdu.setScratchpadMessage(NXFictionalMessages.notYetImplemented);
         };
+
+        const plan = mcdu.flightPlanService.active;
+
         let i = 0;
         let cellIter = 0;
-        wptsListIndex = Math.max(wptsListIndex, mcdu.flightPlanManager.getActiveWaypointIndex(false, false, FlightPlans.Active));
-        const totalWaypointsCount = mcdu.flightPlanManager.getWaypointsCount(FlightPlans.Active);
+        wptsListIndex = Math.max(wptsListIndex, mcdu.flightPlanService.active.activeLegIndex);
+
+        const totalWaypointsCount = plan.firstMissedApproachLegIndex;
+
         while (i < totalWaypointsCount && i + wptsListIndex < totalWaypointsCount && cellIter < iMax) {
-            const waypoint = mcdu.flightPlanManager.getWaypoint(i + wptsListIndex, FlightPlans.Active, true);
-            if (waypoint) {
-                if (waypoint.isVectors) {
+            const legIndex = i + wptsListIndex;
+            if (plan.elementAt(legIndex).isDiscontinuity) {
+                i++;
+                continue;
+            }
+
+            const leg = plan.legElementAt(legIndex);
+
+            if (leg) {
+                if (!leg.isXF()) {
                     i++;
                     continue;
                 }
-                waypointsCell[cellIter] = "{" + waypoint.ident + "[color]cyan";
+
+                waypointsCell[cellIter] = "{" + leg.ident + "[color]cyan";
                 if (waypointsCell[cellIter]) {
                     mcdu.onLeftInput[cellIter + 1] = () => {
                         mcdu.eraseTemporaryFlightPlan(() => {
-                            mcdu.ensureCurrentFlightPlanIsTemporary(() => {
-                                mcdu.flightPlanManager.insertDirectTo(waypoint).then(() => {
-                                    CDUDirectToPage.ShowPage(mcdu, waypoint, wptsListIndex);
-                                });
-                            });
+                            // FIXME fm pos
+                            const ppos = {
+                                lat: SimVar.GetSimVarValue('PLANE LATITUDE', 'Degrees'),
+                                long: SimVar.GetSimVarValue('PLANE LONGITUDE', 'Degrees'),
+                            };
+
+                            // FIXME fm track
+                            const trueTrack = SimVar.GetSimVarValue('L:A32NX_ADIRS_IR_1_TRUE_TRACK', 'Number');
+                            const trueTrackWord = new Arinc429Word(trueTrack);
+
+                            if (trueTrackWord.isNormalOperation()) {
+                                mcdu.flightPlanService.directToLeg(ppos, trueTrackWord.value, legIndex);
+                            }
+
+                            CDUDirectToPage.ShowPage(mcdu, leg.terminationWaypoint(), wptsListIndex);
                         });
                     };
                 }
