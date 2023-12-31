@@ -28,11 +28,11 @@ module.exports = {
         typecheckingPlugin(),
     ],
     instruments: [
-        msfsAvionicsInstrument('PFD'),
+        // msfsAvionicsInstrument('PFD'),
         msfsAvionicsInstrument('ND'),
+        msfsAvionicsInstrument('MFD'),
 
         reactInstrument('EWD'),
-        reactInstrument('MFD'),
         reactInstrument('OIT'),
         reactInstrument('RMP'),
         reactInstrument('SD'),
