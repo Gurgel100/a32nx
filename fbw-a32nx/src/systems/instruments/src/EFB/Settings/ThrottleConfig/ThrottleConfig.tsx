@@ -31,6 +31,8 @@ export const ThrottleConfig = ({ isShown, onClose }: ThrottleConfigProps) => {
 
     const [reverserOnAxis1, setReverserOnAxis1] = useSimVar('L:A32NX_THROTTLE_MAPPING_USE_REVERSE_ON_AXIS:1', 'number', 1000);
     const [, setReverserOnAxis2] = useSimVar('L:A32NX_THROTTLE_MAPPING_USE_REVERSE_ON_AXIS:2', 'number', 1000);
+    const [, setReverserOnAxis3] = useSimVar('L:A32NX_THROTTLE_MAPPING_USE_REVERSE_ON_AXIS:3', 'number', 1000);
+    const [, setReverserOnAxis4] = useSimVar('L:A32NX_THROTTLE_MAPPING_USE_REVERSE_ON_AXIS:4', 'number', 1000);
 
     const [, syncToDisk] = useSimVar('K:A32NX.THROTTLE_MAPPING_SAVE_TO_FILE', 'number', 1000);
     const [, defaultsToThrottle] = useSimVar('K:A32NX.THROTTLE_MAPPING_SET_DEFAULTS', 'number', 100);
@@ -105,6 +107,10 @@ export const ThrottleConfig = ({ isShown, onClose }: ThrottleConfigProps) => {
     const setReversersOnAxis = (reverserOnAxis: number) => {
         setReverserOnAxis1(reverserOnAxis);
         setReverserOnAxis2(reverserOnAxis);
+        if (airframe === 'A380_842') {
+            setReverserOnAxis3(reverserOnAxis);
+            setReverserOnAxis4(reverserOnAxis);
+        }
         if (reverserOnAxis === 0 && selectedIndex < 2) {
             setSelectedIndex(2);
         }
