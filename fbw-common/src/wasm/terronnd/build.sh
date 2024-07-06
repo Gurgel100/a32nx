@@ -47,6 +47,11 @@ clang++ \
   -fvisibility=hidden \
   -fno-common \
   -fstack-usage \
+  -fdata-sections \
+  -fno-stack-protector \
+  -fstack-size-section \
+  -mbulk-memory \
+  -Werror=return-type \
   -O2 \
   -I "${MSFS_SDK}/WASM/include" \
   -I "${MSFS_SDK}/SimConnect SDK/include" \
@@ -73,6 +78,11 @@ wasm-ld \
   --export malloc \
   --export free \
   --export __wasm_call_ctors \
+  --export mallinfo \
+  --export mchunkit_begin \
+  --export mchunkit_next \
+  --export get_pages_state \
+  --export mark_decommit_pages \
   --export-table \
   --gc-sections \
   ${WASMLD_ARGS} \

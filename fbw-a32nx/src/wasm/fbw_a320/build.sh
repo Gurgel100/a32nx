@@ -44,6 +44,11 @@ clang \
   -fno-exceptions \
   -fms-extensions \
   -fvisibility=hidden \
+  -fdata-sections \
+  -fno-stack-protector \
+  -fstack-size-section \
+  -mbulk-memory \
+  -Werror=return-type \
   -I "${MSFS_SDK}/WASM/include" \
   -I "${COMMON_DIR}/src/zlib" \
   "${COMMON_DIR}/src/zlib/adler32.c" \
@@ -79,6 +84,11 @@ clang++ \
   -fno-exceptions \
   -fms-extensions \
   -fvisibility=hidden \
+  -fdata-sections \
+  -fno-stack-protector \
+  -fstack-size-section \
+  -mbulk-memory \
+  -Werror=return-type \
   -I "${MSFS_SDK}/WASM/include" \
   -I "${MSFS_SDK}/SimConnect SDK/include" \
   -I "${COMMON_DIR}/src" \
@@ -156,6 +166,11 @@ wasm-ld \
   --export malloc \
   --export free \
   --export __wasm_call_ctors \
+  --export mallinfo \
+  --export mchunkit_begin \
+  --export mchunkit_next \
+  --export get_pages_state \
+  --export mark_decommit_pages \
   --export-table \
   --gc-sections \
   ${WASMLD_ARGS} \

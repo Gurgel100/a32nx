@@ -40,6 +40,11 @@ clang \
   -fno-exceptions \
   -fms-extensions \
   -fvisibility=hidden \
+  -fdata-sections \
+  -fno-stack-protector \
+  -fstack-size-section \
+  -mbulk-memory \
+  -Werror=return-type \
   -I "${MSFS_SDK}/WASM/include" \
   -I "${COMMON_DIR}/fbw_common/src/zlib" \
   "${COMMON_DIR}/fbw_common/src/zlib/adler32.c" \
@@ -75,6 +80,11 @@ clang++ \
   -fno-exceptions \
   -fms-extensions \
   -fvisibility=hidden \
+  -fdata-sections \
+  -fno-stack-protector \
+  -fstack-size-section \
+  -mbulk-memory \
+  -Werror=return-type \
   -I "${MSFS_SDK}/WASM/include" \
   -I "${MSFS_SDK}/SimConnect SDK/include" \
   -I "${COMMON_DIR}/fbw_common/src" \
@@ -118,6 +128,7 @@ clang++ \
   "${DIR}/src/model/look2_binlxpw.cpp" \
   "${DIR}/src/model/look2_pbinlxpw.cpp" \
   "${DIR}/src/model/mod_mvZvttxs.cpp" \
+  "${DIR}/src/model/mod_2RcCQkwc.cpp" \
   "${DIR}/src/model/MultiWordIor.cpp" \
   "${DIR}/src/model/rt_modd.cpp" \
   "${DIR}/src/model/rt_remd.cpp" \
@@ -149,6 +160,11 @@ wasm-ld \
   --export malloc \
   --export free \
   --export __wasm_call_ctors \
+  --export mallinfo \
+  --export mchunkit_begin \
+  --export mchunkit_next \
+  --export get_pages_state \
+  --export mark_decommit_pages \
   --export-table \
   --gc-sections \
   ${WASMLD_ARGS} \

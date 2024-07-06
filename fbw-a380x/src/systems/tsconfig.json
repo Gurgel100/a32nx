@@ -5,7 +5,8 @@
       "resolveJsonModule" : true,
       "skipLibCheck": true,
       "typeRoots": [
-        "../../../fbw-common/src/typings"
+        "../../../fbw-common/src/typings",
+        "../../../node_modules/@types",
       ],
       "moduleResolution": "node",
       "allowSyntheticDefaultImports": true,
@@ -18,7 +19,9 @@
         "@flybywiresim/failures": ["failures"],
         "@tcas/*": ["./tcas/src/*"],
         "@typings/*": ["../typings"],
-        "@flybywiresim/fbw-sdk": ["../../../fbw-common/src/systems/index.ts"]
+        "@flybywiresim/fbw-sdk": ["../../../fbw-common/src/systems/index.ts"],
+        "@flybywiresim/clock": ["../../../fbw-common/src/systems/instruments/src/Clock/index.ts"],
+        "@flybywiresim/bat": ["../../../fbw-common/src/systems/instruments/src/BAT/index.ts"]
       }
     }
 }

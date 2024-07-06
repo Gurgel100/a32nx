@@ -1,7 +1,9 @@
 use systems::{
     accept_iterable,
     air_conditioning::{
-        acs_controller::Pack, cabin_air::CabinAirSimulation, pressure_valve::SafetyValve,
+        acs_controller::Pack,
+        cabin_air::CabinAirSimulation,
+        pressure_valve::{NegativeRelieveValveSignal, SafetyValve},
         AdirsToAirCondInterface, Air, AirConditioningOverheadShared, AirConditioningPack,
         AirHeater, CabinFan, DuctTemperature, MixerUnit, OutletAir, OverheadFlowSelector, PackFlow,
         PackFlowControllers, PressurizationConstants, PressurizationOverheadShared, TrimAirSystem,
@@ -702,6 +704,8 @@ impl SimulationElement for A380AirConditioningSystem {
 
 struct A380AirConditioningSystemOverhead {
     flow_selector_id: VariableIdentifier,
+    purs_sel_temp_id: VariableIdentifier,
+    purs_sel_temperature: ThermodynamicTemperature,
 
     // Air panel
     flow_selector: OverheadFlowSelector,
@@ -724,6 +728,8 @@ impl A380AirConditioningSystemOverhead {
         Self {
             flow_selector_id: context
                 .get_identifier("KNOB_OVHD_AIRCOND_PACKFLOW_Position".to_owned()),
+            purs_sel_temp_id: context.get_identifier("COND_PURS_SEL_TEMPERATURE".to_owned()),
+            purs_sel_temperature: ThermodynamicTemperature::new::<degree_celsius>(24.),
 
             // Air panel
             flow_selector: OverheadFlowSelector::Norm,
@@ -733,7 +739,7 @@ impl A380AirConditioningSystemOverhead {
             ],
             temperature_selectors: [
                 ValueKnob::new_with_value(context, "COND_CKPT_SELECTOR", 150.),
-                ValueKnob::new_with_value(context, "COND_CABIN_SELECTOR", 150.),
+                ValueKnob::new_with_value(context, "COND_CABIN_SELECTOR", 200.),
             ],
             ram_air_pb: OnOffPushButton::new_off(context, "COND_RAM_AIR"),
             pack_pbs: [
@@ -768,13 +774,19 @@ impl A380AirConditioningSystemOverhead {
 impl AirConditioningOverheadShared for A380AirConditioningSystemOverhead {
     fn selected_cabin_temperature(&self, zone_id: usize) -> ThermodynamicTemperature {
         // The A380 has 16 cabin zones but only one knob
-        let knob = if zone_id > 0 {
-            &self.temperature_selectors[1]
+        let knob_value = if zone_id > 0 {
+            // We modify the cabin value to account for multiple rotations and for the "dead band" of the purser selection
+            &self.temperature_selectors[1].value() % 400. - 50.
         } else {
-            &self.temperature_selectors[0]
+            self.temperature_selectors[0].value()
         };
-        // Map from knob range 0-300 to 18-30 degrees C
-        ThermodynamicTemperature::new::<degree_celsius>(knob.value() * 0.04 + 18.)
+        if zone_id > 0 && !(0. ..=300.).contains(&knob_value) {
+            // The knob is in PURS SEL
+            self.purs_sel_temperature
+        } else {
+            // Map from knob range 0-300 to 18-30 degrees C
+            ThermodynamicTemperature::new::<degree_celsius>(knob_value * 0.04 + 18.)
+        }
     }
 
     fn selected_cargo_temperature(&self, zone_id: ZoneType) -> ThermodynamicTemperature {
@@ -825,7 +837,9 @@ impl SimulationElement for A380AirConditioningSystemOverhead {
             2 => OverheadFlowSelector::Norm,
             3 => OverheadFlowSelector::Hi,
             _ => panic!("Overhead flow selector position not recognized."),
-        }
+        };
+
+        self.purs_sel_temperature = reader.read(&self.purs_sel_temp_id);
     }
 
     fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
@@ -849,6 +863,7 @@ struct A380PressurizationSystem {
 
     negative_relief_valves_id: VariableIdentifier,
     negative_relief_valves: SafetyValve,
+    negative_relief_valves_signal: NegativeRelieveValveSignal<A380PressurizationConstants>,
 }
 
 impl A380PressurizationSystem {
@@ -892,6 +907,7 @@ impl A380PressurizationSystem {
             negative_relief_valves_id: context
                 .get_identifier("PRESS_SAFETY_VALVE_OPEN_PERCENTAGE".to_owned()),
             negative_relief_valves: SafetyValve::new(),
+            negative_relief_valves_signal: NegativeRelieveValveSignal::new(),
         }
     }
 
@@ -914,9 +930,14 @@ impl A380PressurizationSystem {
             );
         }
 
+        self.negative_relief_valves_signal.update(
+            context,
+            cabin_simulation.cabin_pressure(),
+            self.negative_relief_valves.open_amount(),
+        );
         // TODO Add check for failure
         self.negative_relief_valves
-            .update(context, self.ocsm[0].negative_relief_valve_trigger());
+            .update(context, &self.negative_relief_valves_signal);
     }
 
     fn safety_valve_open_amount(&self) -> Ratio {
@@ -2347,7 +2368,7 @@ mod tests {
         fn command_selected_temperature(mut self, temperature: ThermodynamicTemperature) -> Self {
             let knob_value: f64 = (temperature.get::<degree_celsius>() - 18.) / 0.04;
             self.write_by_name("OVHD_COND_CKPT_SELECTOR_KNOB", knob_value);
-            self.write_by_name("OVHD_COND_CABIN_SELECTOR_KNOB", knob_value);
+            self.write_by_name("OVHD_COND_CABIN_SELECTOR_KNOB", knob_value + 50.);
             self
         }
 
@@ -2355,8 +2376,21 @@ mod tests {
             mut self,
             temperature: ThermodynamicTemperature,
         ) -> Self {
-            let knob_value: f64 = (temperature.get::<degree_celsius>() - 18.) / 0.04;
+            let knob_value: f64 = (temperature.get::<degree_celsius>() - 18.) / 0.04 + 50.;
             self.write_by_name("OVHD_COND_CABIN_SELECTOR_KNOB", knob_value);
+            self
+        }
+
+        fn command_cabin_knob_in_purs_sel(mut self) -> Self {
+            self.write_by_name("OVHD_COND_CABIN_SELECTOR_KNOB", -50.);
+            self
+        }
+
+        fn command_purs_sel_temperature(mut self, temperature: ThermodynamicTemperature) -> Self {
+            self.write_by_name(
+                "COND_PURS_SEL_TEMPERATURE",
+                temperature.get::<degree_celsius>(),
+            );
             self
         }
 
@@ -2752,10 +2786,9 @@ mod tests {
     }
 
     fn test_bed_in_descent() -> CabinAirTestBed {
-        let test_bed = test_bed_in_cruise()
+        test_bed_in_cruise()
             .vertical_speed_of(Velocity::new::<foot_per_minute>(-260.))
-            .iterate(40);
-        test_bed
+            .iterate(40)
     }
 
     mod a380_pressurization_tests {
@@ -3753,12 +3786,12 @@ mod tests {
                 test_bed.command_pack_flow_selector_position(2);
                 test_bed = test_bed.iterate(100);
                 let flow_zero_pax = test_bed.pack_flow();
-
-                assert!(test_bed.pack_flow() < initial_flow);
+                // When number of pax is 0, the flow is adjusted for max number of passengers
+                assert!(test_bed.pack_flow() > initial_flow);
 
                 test_bed = test_bed.command_number_of_passengers(400).iterate(100);
                 assert!(test_bed.pack_flow() < initial_flow);
-                assert!(test_bed.pack_flow() > flow_zero_pax);
+                assert!(test_bed.pack_flow() < flow_zero_pax);
             }
 
             #[test]
@@ -4183,6 +4216,32 @@ mod tests {
                             < 1.
                     );
                 }
+            }
+
+            #[test]
+            fn cabin_temperature_targets_purser() {
+                let mut test_bed = test_bed()
+                    .with()
+                    .command_packs_on_off(true)
+                    .and()
+                    .command_cabin_knob_in_purs_sel()
+                    .command_purs_sel_temperature(ThermodynamicTemperature::new::<degree_celsius>(
+                        20.,
+                    ))
+                    .iterate(1000);
+
+                for id in 1..A380_ZONE_IDS.len() {
+                    assert!(
+                        (test_bed.measured_temperature_by_zone()[id].get::<degree_celsius>() - 20.)
+                            .abs()
+                            < 1.
+                    );
+                }
+                assert!(
+                    (test_bed.measured_temperature_by_zone()[0].get::<degree_celsius>() - 24.)
+                        .abs()
+                        < 1.
+                );
             }
 
             #[test]
