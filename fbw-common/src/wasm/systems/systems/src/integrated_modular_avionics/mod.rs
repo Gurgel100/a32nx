@@ -1,3 +1,5 @@
+use crate::shared::arinc429::SignStatus;
+
 use self::{
     core_processing_input_output_module::CoreProcessingInputOutputModule,
     input_output_module::InputOutputModule,
@@ -19,7 +21,7 @@ impl AvionicsDataCommunicationNetworkMessageIdentifier {
 }
 
 pub trait AvionicsDataCommunicationNetworkEndpoint {
-    type MessageData: Clone + Eq + PartialEq;
+    type MessageData: Clone + PartialEq;
 
     /// Receives a value based on the provided identifier.
     ///
@@ -50,7 +52,7 @@ pub trait AvionicsDataCommunicationNetworkEndpoint {
 }
 
 /// Represents an endpoint in the Avionics Data Communication Network.
-pub trait AvionicsDataCommunicationNetwork<'a, MessageData: Clone + Eq + PartialEq> {
+pub trait AvionicsDataCommunicationNetwork<'a, MessageData: Clone + PartialEq> {
     type NetworkEndpoint: AvionicsDataCommunicationNetworkEndpoint<MessageData = MessageData>;
     type NetworkEndpointRef: Deref<Target = Self::NetworkEndpoint>;
 
@@ -75,13 +77,12 @@ pub type AvionicsDataCommunicationNetworkMessage<MessageData> =
     AvionicsDataCommunicationNetworkMessageFunctionalDataSet<MessageData>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AvionicsDataCommunicationNetworkMessageFunctionalDataSet<
-    MessageData: Clone + Eq + PartialEq,
-> {
+pub struct AvionicsDataCommunicationNetworkMessageFunctionalDataSet<MessageData: Clone + PartialEq>
+{
     status: AvionicsDataCommunicationNetworkMessageFunctionalDataSetStatus,
     data: MessageData,
 }
-impl<MessageData: Clone + Eq + PartialEq>
+impl<MessageData: Clone + PartialEq>
     AvionicsDataCommunicationNetworkMessageFunctionalDataSet<MessageData>
 {
     pub fn new(
@@ -130,4 +131,14 @@ pub enum AvionicsDataCommunicationNetworkMessageFunctionalDataSetStatus {
     NoComputedData,  // Priority: 2
     FunctionalTest,  // Priority: 3
     NormalOperation, // Priority: 4
+}
+impl From<SignStatus> for AvionicsDataCommunicationNetworkMessageFunctionalDataSetStatus {
+    fn from(value: SignStatus) -> Self {
+        match value {
+            SignStatus::FailureWarning => Self::NoData,
+            SignStatus::NoComputedData => Self::NoComputedData,
+            SignStatus::FunctionalTest => Self::FunctionalTest,
+            SignStatus::NormalOperation => Self::NormalOperation,
+        }
+    }
 }
