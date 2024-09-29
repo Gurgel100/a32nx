@@ -1,30 +1,36 @@
 // Note: Fuel system for now is still handled in MSFS. This is used for calculating fuel-related factors.
 
+mod fuel_quantity_data_concentrator;
 mod fuel_quantity_management_system;
+use fuel_quantity_data_concentrator::FuelQuantityDataConcentrator;
 use fuel_quantity_management_system::A380FuelQuantityManagementSystem;
 use nalgebra::Vector3;
 use systems::{
-    fuel::{FuelCG, FuelInfo, FuelPayload, FuelPumpProperties, FuelSystem},
-    shared::ElectricalBusType,
-    simulation::{InitContext, SimulationElement, SimulationElementVisitor, UpdateContext},
+    accept_iterable, fuel::{FuelCG, FuelInfo, FuelPayload, FuelPumpProperties, FuelSystem}, integrated_modular_avionics::AvionicsDataCommunicationNetwork, shared::ElectricalBusType, simulation::{InitContext, SimulationElement, SimulationElementVisitor, UpdateContext}
 };
 use uom::si::f64::*;
+
+use crate::avionics_data_communication_network::A380AvionicsDataCommunicationNetwork;
 
 #[cfg(test)]
 mod test;
 
 pub trait FuelLevel {
-    fn left_outer_tank_has_fuel(&self) -> bool;
-    fn feed_one_tank_has_fuel(&self) -> bool;
-    fn left_mid_tank_has_fuel(&self) -> bool;
-    fn left_inner_tank_has_fuel(&self) -> bool;
-    fn feed_two_tank_has_fuel(&self) -> bool;
-    fn feed_three_tank_has_fuel(&self) -> bool;
-    fn right_inner_tank_has_fuel(&self) -> bool;
-    fn right_mid_tank_has_fuel(&self) -> bool;
-    fn feed_four_tank_has_fuel(&self) -> bool;
-    fn right_outer_tank_has_fuel(&self) -> bool;
-    fn trim_tank_has_fuel(&self) -> bool;
+    fn left_outer_tank_quantity(&self) -> Mass;
+    fn feed_one_tank_quantity(&self) -> Mass;
+    fn left_mid_tank_quantity(&self) -> Mass;
+    fn left_inner_tank_quantity(&self) -> Mass;
+    fn feed_two_tank_quantity(&self) -> Mass;
+    fn feed_three_tank_quantity(&self) -> Mass;
+    fn right_inner_tank_quantity(&self) -> Mass;
+    fn right_mid_tank_quantity(&self) -> Mass;
+    fn feed_four_tank_quantity(&self) -> Mass;
+    fn right_outer_tank_quantity(&self) -> Mass;
+    fn trim_tank_quantity(&self) -> Mass;
+}
+
+trait SetFuelLevel {
+    fn set_tank_quantity(&mut self, tank: A380FuelTankType, quantity: Mass);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -61,13 +67,75 @@ impl A380FuelTankType {
     }
 }
 
-pub struct A380Fuel {
+pub(crate) struct A380Fuel {
+    fuel_system: A380FuelSystem,
+    fuel_quantity_data_concentrators: [FuelQuantityDataConcentrator; 2],
     fuel_quantity_management_system: A380FuelQuantityManagementSystem,
 }
-
 impl A380Fuel {
+    pub(crate) fn new(
+        context: &mut InitContext,
+        acdn: &A380AvionicsDataCommunicationNetwork,
+    ) -> Self {
+        let cpiom = acdn.get_cpiom("CPIOMF");
+        Self {
+            fuel_system: A380FuelSystem::new(context),
+            fuel_quantity_data_concentrators: [
+                // TODO: FQDC 1 is powered by 501PP (ESS BAT REFUEL BUS, i.e. HOT BUS BAT ESS) when refueling on battery
+                (1, ElectricalBusType::Sub("501PP")),
+                (2, ElectricalBusType::DirectCurrent(1)),
+            ]
+            .map(|(i, powered_by)| FuelQuantityDataConcentrator::new(context, i, powered_by)),
+            fuel_quantity_management_system: A380FuelQuantityManagementSystem::new(context) acdn),
+        }
+    }
+
+    pub(crate) fn update(&mut self, context: &UpdateContext) {
+        for fqdc in &mut self.fuel_quantity_data_concentrators {
+            fqdc.update(&self.fuel_system);
+        }
+        self.fuel_quantity_management_system
+            .update(context, &mut self.fuel_system);
+    }
+
+    pub(crate) fn feed_four_tank_has_fuel(&self) -> bool {
+        self.fuel_system.tank_has_fuel(A380FuelTankType::FeedFour)
+    }
+}
+impl FuelPayload for A380Fuel {
+    fn total_load(&self) -> Mass {
+        self.fuel_system.total_load()
+    }
+    fn fore_aft_center_of_gravity(&self) -> f64 {
+        self.fuel_system.fore_aft_center_of_gravity()
+    }
+
+    fn tank_mass(&self, t: usize) -> Mass {
+        self.fuel_system.tank_mass(t)
+    }
+}
+impl FuelCG for A380Fuel {
+    fn center_of_gravity(&self) -> Vector3<f64> {
+        self.fuel_system.center_of_gravity()
+    }
+}
+impl SimulationElement for A380Fuel {
+    fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
+        self.fuel_system.accept(visitor);
+        accept_iterable!(self.fuel_quantity_data_concentrators, visitor);
+        self.fuel_quantity_management_system.accept(visitor);
+
+        visitor.visit(self);
+    }
+}
+
+struct A380FuelSystem {
+    fuel_system: FuelSystem<11>,
+}
+
+impl A380FuelSystem {
     // TODO: Move to toml cfg
-    pub const A380_FUEL: [FuelInfo<'static>; 11] = [
+    const A380_FUEL: [FuelInfo<'static>; 11] = [
         FuelInfo {
             // LEFT_OUTER - Capacity: 2731.5
             fuel_tank_id: "FUEL_TANK_QUANTITY_1",
@@ -304,76 +372,19 @@ impl A380Fuel {
         },
     ];
 
-    pub fn new(context: &mut InitContext) -> Self {
-        A380Fuel {
-            fuel_quantity_management_system: A380FuelQuantityManagementSystem::new(
-                context,
-                Self::A380_FUEL,
-            ),
+    fn new(context: &mut InitContext) -> Self {
+        let fuel_tanks = Self::A380_FUEL.map(|f| f.into_fuel_tank(context, true));
+        A380FuelSystem {
+            fuel_system: FuelSystem::new(context, fuel_tanks),
         }
     }
 
-    pub(crate) fn update(&mut self, context: &UpdateContext) {
-        self.fuel_quantity_management_system.update(context);
-    }
-
     fn fuel_system(&self) -> &FuelSystem<11> {
-        self.fuel_quantity_management_system.fuel_system()
+        &self.fuel_system
     }
 
-    fn left_outer_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::LeftOuter as usize)
-    }
-
-    fn feed_one_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::FeedOne as usize)
-    }
-
-    fn left_mid_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::LeftMid as usize)
-    }
-
-    fn left_inner_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::LeftInner as usize)
-    }
-
-    fn feed_two_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::FeedTwo as usize)
-    }
-
-    fn feed_three_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::FeedThree as usize)
-    }
-
-    fn right_inner_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::RightInner as usize)
-    }
-
-    fn right_mid_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::RightMid as usize)
-    }
-
-    pub fn feed_four_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::FeedFour as usize)
-    }
-
-    fn right_outer_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::RightOuter as usize)
-    }
-
-    fn trim_tank_has_fuel(&self) -> bool {
-        self.fuel_system()
-            .tank_has_fuel(A380FuelTankType::Trim as usize)
+    fn tank_has_fuel(&self, tank: A380FuelTankType) -> bool {
+        self.fuel_system().tank_has_fuel(tank as usize)
     }
 
     fn fore_aft_center_of_gravity(&self) -> f64 {
@@ -389,42 +400,68 @@ impl A380Fuel {
     }
 }
 
-impl FuelLevel for A380Fuel {
-    fn left_outer_tank_has_fuel(&self) -> bool {
-        self.left_outer_tank_has_fuel()
+impl FuelLevel for A380FuelSystem {
+    fn left_outer_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::LeftOuter as usize)
     }
-    fn feed_one_tank_has_fuel(&self) -> bool {
-        self.feed_one_has_fuel()
+
+    fn feed_one_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::FeedOne as usize)
     }
-    fn left_mid_tank_has_fuel(&self) -> bool {
-        self.left_mid_tank_has_fuel()
+
+    fn left_mid_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::LeftMid as usize)
     }
-    fn left_inner_tank_has_fuel(&self) -> bool {
-        self.left_inner_tank_has_fuel()
+
+    fn left_inner_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::LeftInner as usize)
     }
-    fn feed_two_tank_has_fuel(&self) -> bool {
-        self.feed_two_tank_has_fuel()
+
+    fn feed_two_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::FeedTwo as usize)
     }
-    fn feed_three_tank_has_fuel(&self) -> bool {
-        self.feed_three_tank_has_fuel()
+
+    fn feed_three_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::FeedThree as usize)
     }
-    fn right_inner_tank_has_fuel(&self) -> bool {
-        self.right_inner_tank_has_fuel()
+
+    fn right_inner_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::RightInner as usize)
     }
-    fn right_mid_tank_has_fuel(&self) -> bool {
-        self.right_mid_tank_has_fuel()
+
+    fn right_mid_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::RightMid as usize)
     }
-    fn feed_four_tank_has_fuel(&self) -> bool {
-        self.feed_four_tank_has_fuel()
+
+    fn feed_four_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::FeedFour as usize)
     }
-    fn right_outer_tank_has_fuel(&self) -> bool {
-        self.right_outer_tank_has_fuel()
+
+    fn right_outer_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::RightOuter as usize)
     }
-    fn trim_tank_has_fuel(&self) -> bool {
-        self.trim_tank_has_fuel()
+
+    fn trim_tank_quantity(&self) -> Mass {
+        self.fuel_system()
+            .tank_mass(A380FuelTankType::Trim as usize)
     }
 }
-impl FuelPayload for A380Fuel {
+impl SetFuelLevel for A380FuelSystem {
+    fn set_tank_quantity(&mut self, tank: A380FuelTankType, quantity: Mass) {
+        self.fuel_system.set_tank_quantity(tank as usize, quantity);
+    }
+}
+impl FuelPayload for A380FuelSystem {
     fn total_load(&self) -> Mass {
         self.total_load()
     }
@@ -436,14 +473,15 @@ impl FuelPayload for A380Fuel {
         self.fuel_system().tank_mass(t)
     }
 }
-impl FuelCG for A380Fuel {
+impl FuelCG for A380FuelSystem {
     fn center_of_gravity(&self) -> Vector3<f64> {
         self.center_of_gravity()
     }
 }
-impl SimulationElement for A380Fuel {
+impl SimulationElement for A380FuelSystem {
     fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
-        self.fuel_quantity_management_system.accept(visitor);
+        self.fuel_system.accept(visitor);
+
         visitor.visit(self);
     }
 }
