@@ -98,6 +98,8 @@ impl<C: PressurizationConstants, const ZONES: usize> CabinAirSimulation<C, ZONES
         self.filtered_flow_in =
             self.flow_in_low_pass_filter(air_conditioning_system.outlet_air().flow_rate());
 
+        println!("flow_in: {:.2?}", self.filtered_flow_in);
+
         // Set flow in properties
         self.air_in
             .set_flow_rate(self.calculate_cabin_flow_in(context, self.filtered_flow_in));
@@ -105,11 +107,19 @@ impl<C: PressurizationConstants, const ZONES: usize> CabinAirSimulation<C, ZONES
             .set_pressure(air_conditioning_system.outlet_air().pressure());
         self.air_in
             .set_temperature(air_conditioning_system.outlet_air().temperature());
+        println!(
+            "air_in: {:.2?} {:.2?} {:.2?}",
+            self.air_in.flow_rate, self.air_in.pressure, self.air_in.temperature
+        );
 
         // Set flow in properties for cargo bays
         self.cargo_air_in.set_pressure(self.internal_air.pressure());
         self.cargo_air_in
             .set_temperature(self.internal_air.temperature());
+        println!(
+            "cargo_air_in: {:.2?} {:.2?} {:.2?}",
+            self.cargo_air_in.flow_rate, self.cargo_air_in.pressure, self.cargo_air_in.temperature
+        );
 
         // Calculate zone temperatures
         // let mut flow_rate_per_cubic_meter = self.flow_rate_per_cubic_meter();

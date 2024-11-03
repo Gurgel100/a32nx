@@ -236,7 +236,7 @@ where
 pub struct SimulationTestBed<T: Aircraft> {
     reader_writer: TestReaderWriter,
     simulation: Simulation<T>,
-    variable_registry: TestVariableRegistry,
+    pub variable_registry: TestVariableRegistry,
 }
 impl<T: Aircraft> SimulationTestBed<T> {
     pub fn new<U: FnOnce(&mut InitContext) -> T>(aircraft_ctor_fn: U) -> Self {
@@ -646,7 +646,7 @@ impl Default for TestReaderWriter {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 // TODO Make private once HYD tests are modified to use SimulationTestBed.
 pub struct TestVariableRegistry {
     name_to_identifier: FxHashMap<String, VariableIdentifier>,

@@ -698,6 +698,11 @@ impl ZoneController {
         let corrected_selected_temp: f64 =
             self.zone_selected_temperature.get::<kelvin>() + altitude_correction;
 
+        /*println!(
+            "{zone_measured_temperature:.4?}: {:.4?}, {:.4?}",
+            self.calculate_duct_temp_upper_limit(zone_measured_temperature),
+            self.calculate_duct_temp_lower_limit(zone_measured_temperature)
+        );*/
         self.pid_controller.set_max_output(
             self.calculate_duct_temp_upper_limit(zone_measured_temperature)
                 .get::<kelvin>(),
