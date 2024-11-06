@@ -82,7 +82,10 @@ fn print_cabin_pressure_status(test_bed: &mut SimulationTestBed<A380>) {
         0
     };
 
+    let man_cabin_alt: f64 = test_bed.read_by_name("PRESS_MAN_CABIN_ALTITUDE");
     let man_delta_psi: f64 = test_bed.read_by_name("PRESS_MAN_CABIN_DELTA_PRESSURE");
+    let man_cabin_vs: f64 = test_bed.read_by_name("PRESS_MAN_CABIN_VS");
+
     let cabin_alt_arinc: Arinc429Word<f64> =
         test_bed.read_arinc429_by_name(&format!("PRESS_CABIN_ALTITUDE_B{cpcs_to_use}"));
     let delta_psi_arinc: Arinc429Word<f64> =
@@ -90,29 +93,24 @@ fn print_cabin_pressure_status(test_bed: &mut SimulationTestBed<A380>) {
     let cabin_vs_arinc: Arinc429Word<f64> =
         test_bed.read_arinc429_by_name(&format!("PRESS_CABIN_VS_B{cpcs_to_use}"));
 
-    let delta_psi = delta_psi_arinc.normal_value().unwrap_or(man_delta_psi);
-
     println!(
-        "{:.2?}f {:.2}psi {:.2?}fpm",
+        "CABIN PRESSURE\n  ALT: {:.2?}f ({:?})\n  DPSI: {:.2?}psi ({:?})\n  V/S: {:.2?}fpm ({:?})",
         cabin_alt_arinc.normal_value(),
-        delta_psi,
-        cabin_vs_arinc.normal_value()
+        cabin_alt_arinc.ssm(),
+        delta_psi_arinc.normal_value(),
+        delta_psi_arinc.ssm(),
+        cabin_vs_arinc.normal_value(),
+        cabin_vs_arinc.ssm()
     );
     println!(
-        "{:?} {:?} {:?}",
-        cabin_alt_arinc.ssm(),
-        delta_psi_arinc.ssm(),
-        cabin_vs_arinc.ssm()
+        "  ALT: {man_cabin_alt:.2}f\n  DPSI: {man_delta_psi:.2}psi\n  V/S: {man_cabin_vs:.2}fpm"
     );
 }
 
 fn print_temperature_stats(test_bed: &mut SimulationTestBed<A380>) {
-    let cockpit_cabin_temp: ThermodynamicTemperature =
-        test_bed.read_by_name("A32NX_COND_CKPT_TEMP");
-    let fwd_cargo_temp: ThermodynamicTemperature =
-        test_bed.read_by_name("A32NX_COND_CARGO_FWD_TEMP");
-    let aft_cargo_temp: ThermodynamicTemperature =
-        test_bed.read_by_name("A32NX_COND_CARGO_BULK_TEMP");
+    let cockpit_cabin_temp: ThermodynamicTemperature = test_bed.read_by_name("COND_CKPT_TEMP");
+    let fwd_cargo_temp: ThermodynamicTemperature = test_bed.read_by_name("COND_CARGO_FWD_TEMP");
+    let aft_cargo_temp: ThermodynamicTemperature = test_bed.read_by_name("COND_CARGO_BULK_TEMP");
 
     const MAIN_CABIN_ZONES: [&str; 8] = [
         "MAIN_DECK_1",
