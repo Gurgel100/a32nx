@@ -74,6 +74,22 @@ class EngineControl_A380X {
   static constexpr double FORCE_LB_TO_N       = 4.4482216153;
   static constexpr double FUEL_RATE_THRESHOLD = 661;  // lbs/sec for determining fuel ui tampering
 
+  // Internal state for engine simulation of @Topgun
+  double omega         = 0;       // rad/s
+  double TGT           = 273.15;  // K
+  double fuel_baseline = 0;
+  double fuel_cmd      = 0;  // commanded by baseline + PID
+  double fuel_actual   = 0;  // after actuator lag (kg/s)
+  double mdot_core     = 0;  // kg/s
+  double mdot_bypass   = 0;
+  double tau_starter   = 0;
+  double tau_turbine   = 0;
+  double tau_drag      = 0;
+  double Thrust_N      = 0;
+
+  bool   baseline_saturated   = false;
+  double t_baseline_saturated = 0;
+
   /**
    * @enum EngineState
    * @brief Enumerates the possible states for the engine state machine.
@@ -195,7 +211,8 @@ class EngineControl_A380X {
                             double      deltaTime,
                             double      engineTimer,
                             double      simN3,
-                            double      ambientTemperature);
+                            double      ambientTemperature,
+                            double      ambientPressure);
 
   /**
    * @brief This function manages the engine shutdown procedure.
