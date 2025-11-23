@@ -75,19 +75,21 @@ class EngineControl_A380X {
   static constexpr double FUEL_RATE_THRESHOLD = 661;  // lbs/sec for determining fuel ui tampering
 
   // Internal state for engine simulation of @Topgun
-  double omega         = 0;       // rad/s
-  double TGT           = 273.15;  // K
-  double fuel_baseline = 0;
-  double fuel_cmd      = 0;  // commanded by baseline + PID
-  double fuel_actual   = 0;  // after actuator lag (kg/s)
-  double mdot_core     = 0;  // kg/s
-  double mdot_bypass   = 0;
-  double tau_starter   = 0;
-  double tau_turbine   = 0;
-  double tau_drag      = 0;
-  double Thrust_N      = 0;
+  double omega[4] = {0, 0, 0, 0};                   // rad/s
+  double TGT[4] = {273.15, 273.15, 273.15, 273.15}; // K
+  double fuel_baseline[4] = {0, 0, 0, 0};
+  double fuel_cmd[4] = {0, 0, 0, 0};    // commanded by baseline + PID
+  double fuel_actual[4] = {0, 0, 0, 0}; // after actuator lag (kg/s)
+  double mdot_core[4] = {0, 0, 0, 0};   // kg/s
+  double mdot_bypass[4] = {0, 0, 0, 0};
+  double tau_starter[4] = {0, 0, 0, 0};
+  double tau_turbine[4] = {0, 0, 0, 0};
+  double tau_drag[4] = {0, 0, 0, 0};
+  double Thrust_N[4] = {0, 0, 0, 0};
+  double integrator[4] = {0, 0, 0, 0};
+  double prev_err[4] = {0, 0, 0, 0};
 
-  bool   baseline_saturated   = false;
+  bool baseline_saturated = false;
   double t_baseline_saturated = 0;
 
   /**
@@ -332,6 +334,9 @@ class EngineControl_A380X {
    * @param deltaN3 Difference between last N3 and current N3
    */
   void updateOil(int engine, EngineState engineState, double deltaTime, bool simOnGround, const double ambientTemperature, double deltaN3);
+
+  void updateWindmilling(int engine, double deltaTime, double airspeed,
+                         double ambientDensity);
 };
 
 #endif  // FLYBYWIRE_AIRCRAFT_ENGINECONTROL_A380X_H

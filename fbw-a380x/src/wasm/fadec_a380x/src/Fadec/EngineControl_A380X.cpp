@@ -1,6 +1,7 @@
 // Copyright (c) 2023-2024 FlyByWire Simulations
 // SPDX-License-Identifier: GPL-3.0
 
+#include <cmath>
 #include "logging.h"
 #ifdef PROFILING
 #include "ScopedTimer.hpp"
@@ -14,6 +15,11 @@
 #include "ThrustLimits_A380X.hpp"
 
 #include <algorithm>
+
+// Matlab helper functions
+constexpr double deg2rad(double deg) {
+  return deg * M_PI / 180.0;
+}
 
 void EngineControl_A380X::initialize(MsfsHandler* msfsHandler) {
   this->msfsHandlerPtr = msfsHandler;
@@ -89,6 +95,8 @@ void EngineControl_A380X::update() {
         engineShutdownProcedure(engine, deltaTime, engineTimer, simN1, ambientTemperature);
         updateFF(engine, simCN1, mach, pressureAltitude, ambientTemperature, ambientPressure);
         break;
+      case OFF:
+        updateWindmilling(engine, engineState, deltaTime);
       default:
         updatePrimaryParameters(engine, simN1, simN3);
         double correctedFuelFlow = updateFF(engine, simCN1, mach, pressureAltitude, ambientTemperature, ambientPressure);
@@ -417,17 +425,17 @@ void EngineControl_A380X::engineStartProcedure(int         engine,
   const double idleEGT = simData.engineIdleEGT->get();
 
   // ---------------------- GEOMETRY & INERTIA ----------------------
-  const double fan_mass   = 360;                                       // kg
-  const double fan_radius = 1.9;                                       // m
-  const double I_fan      = 0.5 * fan_mass * fan_radius * fan_radius;  // kg* m ^ 2
-  const double N1_max_rpm = 2900;                                      // rpm(max)
-  const double omega_max  = N1_max_rpm * 2 * M_PI / 60;                // rad / s
+  const double fan_mass = 360;                                   // kg
+  const double fan_radius = 1.9;                                 // m
+  const double I_fan = 0.5 * fan_mass * fan_radius * fan_radius; // kg* m ^ 2
+  const double N1_max_rpm = 2900;                                // rpm(max)
+  const double omega_max = N1_max_rpm * 2 * M_PI / 60;           // rad / s
 
-  const double starter_torque = 591.3;  // N* m constant
-  const double N1_cutoff_pct  = 16.5;   // starter disconnect //
-  const double N1_ground_pct  = 17.0;   // ground idle //
-  const double omega_cutoff   = N1_cutoff_pct / 100 * omega_max;
-  const double omega_ground   = N1_ground_pct / 100 * omega_max;
+  const double starter_torque = 591.3; // N* m constant
+  const double N1_cutoff_pct = 16.5;   // starter disconnect //
+  const double N1_ground_pct = 17.0;   // ground idle //
+  const double omega_cutoff = N1_cutoff_pct / 100 * omega_max;
+  const double omega_ground = N1_ground_pct / 100 * omega_max;
 
   // Quick Start for expedited engine start for Aircraft Presets
   if (simData.fadecQuickMode->getAsBool() && simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 < idleN3) {
@@ -453,190 +461,210 @@ void EngineControl_A380X::engineStartProcedure(int         engine,
     simData.engineCorrectedN3DataPtr[engineIdx]->writeDataToSim();
 
     // Reset variables for simulation of @Topgun
-    omega = simData.engineN1[engineIdx]->get() / 100. * omega_max;
-    TGT   = simData.engineEgt[engineIdx]->get() + 273.15;
+    omega[engineIdx] = simData.engineN1[engineIdx]->get() / 100. * omega_max;
+    TGT[engineIdx] = simData.engineEgt[engineIdx]->get() + 273.15;
   }
   // engine start procedure after the delay
   else {
     // Simulation from @Topgun
     simData.engineTimer[engineIdx]->set(engineTimer + deltaTime);
     // ---------------------- USER / ENV INPUTS ----------------------
-    const double Tamb_C  = ambientTemperature;     // ambient temp in °C (change to test)
-    const double Tamb    = Tamb_C + 273.15;        // K
-    const double Pamb    = ambientPressure * 100;  // Pa
-    const double R_air   = 287;                    // J/(kg*K)
+    const double Tamb_C =
+        ambientTemperature;              // ambient temp in °C (change to test)
+    const double Tamb = Tamb_C + 273.15; // K
+    const double Pamb = ambientPressure * 100; // Pa
+    const double R_air = 287;                  // J/(kg*K)
     const double rho_amb = Pamb / (R_air * Tamb);
 
     // ---------------------- FUEL & SCHEDULE ----------------------
-    const double max_fuel_kgph    = 920;                   // kg/h
-    const double max_fuel         = max_fuel_kgph / 3600;  // kg/s
+    const double max_fuel_kgph = 920;             // kg/h
+    const double max_fuel = max_fuel_kgph / 3600; // kg/s
     const double target_fuel_kgph = 590;
-    const double target_fuel      = target_fuel_kgph / 3600;  // kg/s
+    const double target_fuel = target_fuel_kgph / 3600; // kg/s
 
-    const double t_fuel_start       = 15;   // s: fuel injection starts
-    const double baseline_rise_time = 8;    // seconds to ramp baseline up to max_fuel (smoother than before)
-    const double rampdown_duration  = 300;  // seconds to reduce baseline from 920->590
+    const double t_fuel_start = 15; // s: fuel injection starts
+    const double baseline_rise_time =
+        8; // seconds to ramp baseline up to max_fuel (smoother than before)
+    const double rampdown_duration =
+        300; // seconds to reduce baseline from 920->590
 
     // ---------------------- COMBUSTION / TGT MODEL ----------------------
-    const double gamma         = 1.4;
-    const double cp_air        = 1005;  // J/(kg*K)
-    const double LHV_fuel      = 43e6;  // J/kg
-    const double eta_comb      = 0.98;  // combustion efficiency
-    const double PR_amp        = 9;     // compression ratio amplitude (simple algebraic)
-    const double mdot_core_max = 65;    // kg/s at N1_max (tunable)
+    const double gamma = 1.4;
+    const double cp_air = 1005;   // J/(kg*K)
+    const double LHV_fuel = 43e6; // J/kg
+    const double eta_comb = 0.98; // combustion efficiency
+    const double PR_amp = 9; // compression ratio amplitude (simple algebraic)
+    const double mdot_core_max = 65; // kg/s at N1_max (tunable)
 
     // thermal dynamics: combustion plant as first-order lag (smoother)
-    const double tau_comb = 6;  // seconds (larger = smoother TGT response)
-    const double tau_comp = 3;  // compressor algebraic->relaxation time
-    const double h_cool   = 5;  // cooling coefficient
+    const double tau_comb = 6; // seconds (larger = smoother TGT response)
+    const double tau_comp = 3; // compressor algebraic->relaxation time
+    const double h_cool = 5;   // cooling coefficient
 
     // fuel->power->temp coupling
-    const double k_fuel_temp = 250;  // K/(s*(kg/s)) -- reduced to make TGT rise gentle
+    const double k_fuel_temp =
+        250; // K/(s*(kg/s)) -- reduced to make TGT rise gentle
 
     // effective mass storing heat (for Q balance)
-    const double m_gas = 8;  // kg (bigger -> slower TGT changes)
+    const double m_gas = 8; // kg (bigger -> slower TGT changes)
 
     // ---------------------- TGT TARGET (FIXED) ----------------------
     // <-- THIS WAS MISSING BEFORE AND CAUSED "TGT_target unrecognized"
-    const double TGT_target_C = 350;                    // desired TGT in Celsius (edit here)
-    const double TGT_target   = TGT_target_C + 273.15;  // convert to Kelvin used in sim
+    const double TGT_target_C = 350; // desired TGT in Celsius (edit here)
+    const double TGT_target =
+        TGT_target_C + 273.15; // convert to Kelvin used in sim
 
     // ---------------------- FUEL ACTUATOR (filter) ----------------------
-    // model fuel actuator as first-order: fuel_cmd_actual_dot = (fuel_cmd_cmd - fuel_cmd_actual)/tau_fuel_act
-    const double tau_fuel_act = 2.5;  // s (slows the commanded fuel change)
+    // model fuel actuator as first-order: fuel_cmd_actual_dot = (fuel_cmd_cmd -
+    // fuel_cmd_actual)/tau_fuel_act
+    const double tau_fuel_act = 2.5; // s (slows the commanded fuel change)
 
     // ---------------------- PID CONTROLLER (gentle) ----------------------
-    const double Kp                = 2.5;
-    const double Ki                = 0.6;
-    const double Kd                = 0.5;   // tuned to be much gentler
-    const double pid_to_fuel_scale = 3e-5;  // scale from PID output (K*gain) to kg/s correction
-    double       integrator        = 0;
-    double       prev_err          = 0;
+    const double Kp = 2.5;
+    const double Ki = 0.6;
+    const double Kd = 0.5; // tuned to be much gentler
+    const double pid_to_fuel_scale =
+        3e-5; // scale from PID output (K*gain) to kg/s correction
 
     // ---------------------- PROPULSION / THRUST MODEL ----------------------
     // Use a two-stream (core + bypass) approximation:
-    const double BPR            = 8;     // bypass ratio (typical high-bypass)
-    const double dV_bypass_full = 150;   // m/s, bypass jet delta-V at full N1 (tunable)
-    const double nozzle_eta     = 0.95;  // nozzle efficiency for core expansion
+    const double BPR = 8; // bypass ratio (typical high-bypass)
+    const double dV_bypass_full =
+        150; // m/s, bypass jet delta-V at full N1 (tunable)
+    const double nozzle_eta = 0.95; // nozzle efficiency for core expansion
 
     // Thrust conversion constant
     const double lbf_to_N = 4.44822;
 
     // ---------------------- OTHER DYNAMICS ----------------------
-    const double k_drag              = 0.241;  // drag torque coefficient (N*m/(rad/s)^2)
-    const double torque_power_factor = 0.045;  // converts combustion power (W) to torque (N*m) (tunable)
+    const double k_drag = 0.241; // drag torque coefficient (N*m/(rad/s)^2)
+    const double torque_power_factor =
+        0.045; // converts combustion power (W) to torque (N*m) (tunable)
 
-    const double r = std::clamp(omega / omega_max, 0., 1.);
-    mdot_core      = mdot_core_max * r;
-    mdot_bypass    = BPR * mdot_core;
+    const double r = std::clamp(omega[engineIdx] / omega_max, 0., 1.);
+    mdot_core[engineIdx] = mdot_core_max * r;
+    mdot_bypass[engineIdx] = BPR * mdot_core[engineIdx];
 
     // --- baseline scheduled fuel ---
     double baseline;
     if (engineTimer < t_fuel_start) {
       baseline = 0;
     } else {
-      baseline = max_fuel * std::min(1., (engineTimer - t_fuel_start) / baseline_rise_time);
+      baseline = max_fuel * std::min(1., (engineTimer - t_fuel_start) /
+                                             baseline_rise_time);
     }
 
     // detect saturation to start rampdown countdown
     if (!baseline_saturated && baseline >= max_fuel - 1e-9) {
-      baseline_saturated   = true;
+      baseline_saturated = true;
       t_baseline_saturated = engineTimer;
     }
     if (baseline_saturated) {
       const double td = engineTimer - t_baseline_saturated;
       if (td <= rampdown_duration) {
-        baseline = max_fuel + (target_fuel - max_fuel) * (td / rampdown_duration);
+        baseline =
+            max_fuel + (target_fuel - max_fuel) * (td / rampdown_duration);
       } else {
         baseline = target_fuel;
       }
     }
-    fuel_baseline = baseline;
+    fuel_baseline[engineIdx] = baseline;
 
     // --- PID controller (acts after fuel allowed) ---
     double pid_corr;
     if (engineTimer < t_fuel_start) {
-      pid_corr   = 0;
-      integrator = 0;
-      prev_err   = 0;
+      pid_corr = 0;
+      integrator[engineIdx] = 0;
+      prev_err[engineIdx] = 0;
     } else {
-      const double err   = (TGT_target - TGT);
-      integrator         = integrator + err * deltaTime;
-      const double deriv = (err - prev_err) / deltaTime;
-      prev_err           = err;
-      const double u_pid = Kp * err + Ki * integrator + Kd * deriv;
-      pid_corr           = pid_to_fuel_scale * u_pid;  // kg/s correction
+      const double err = (TGT_target - TGT[engineIdx]);
+      integrator[engineIdx] = integrator[engineIdx] + err * deltaTime;
+      const double deriv = (err - prev_err[engineIdx]) / deltaTime;
+      prev_err[engineIdx] = err;
+      const double u_pid = Kp * err + Ki * integrator[engineIdx] + Kd * deriv;
+      pid_corr = pid_to_fuel_scale * u_pid; // kg/s correction
     }
 
     // commanded fuel = baseline + PID correction
     const double fuel_unsat = baseline + pid_corr;
     // saturate between 0 and max_fuel
-    fuel_cmd = std::max(0., std::min(max_fuel, fuel_unsat));
+    fuel_cmd[engineIdx] = std::max(0., std::min(max_fuel, fuel_unsat));
 
     // anti-windup: if saturated, gently back off integrator
-    if (fuel_cmd != fuel_unsat) {
-      integrator = integrator * 0.98;
+    if (fuel_cmd[engineIdx] != fuel_unsat) {
+      integrator[engineIdx] = integrator[engineIdx] * 0.98;
     }
 
     // --- fuel actuator dynamics (first-order) ---
-    fuel_actual = fuel_actual + (fuel_cmd - fuel_actual) * (deltaTime / (tau_fuel_act + deltaTime));
+    fuel_actual[engineIdx] = fuel_actual[engineIdx] +
+                             (fuel_cmd[engineIdx] - fuel_actual[engineIdx]) *
+                                 (deltaTime / (tau_fuel_act + deltaTime));
 
     // --- combustion plant (first-order dynamics) ---
     // compression-only temperature after compressor (algebraic)
-    const double PR           = 1 + PR_amp * r;
+    const double PR = 1 + PR_amp * r;
     const double T_after_comp = Tamb * std::pow(PR, (gamma - 1) / gamma);
     // combustion energy input (W)
-    const double P_comb = fuel_actual * LHV_fuel * eta_comb;
+    const double P_comb = fuel_actual[engineIdx] * LHV_fuel * eta_comb;
     // convert approx to thermal temp rise contribution (simplified)
-    const double dTdt_fuel = (P_comb / (m_gas * cp_air) - (TGT - Tamb) / tau_comb);
+    const double dTdt_fuel =
+        (P_comb / (m_gas * cp_air) - (TGT[engineIdx] - Tamb) / tau_comb);
     // compression relaxation
-    const double dTdt_comp = (T_after_comp - TGT) / tau_comp;
+    const double dTdt_comp = (T_after_comp - TGT[engineIdx]) / tau_comp;
     // cooling by core flow (convective)
-    const double Qdot_loss = h_cool * mdot_core * cp_air * (TGT - Tamb);  // W
+    const double Qdot_loss =
+        h_cool * mdot_core[engineIdx] * cp_air * (TGT[engineIdx] - Tamb); // W
     const double dTdt_cool = -(Qdot_loss) / (m_gas * cp_air);
     // total
     const double dTdt_total = dTdt_fuel + dTdt_comp + dTdt_cool;
-    TGT                     = TGT + dTdt_total * deltaTime;
+    TGT[engineIdx] = TGT[engineIdx] + dTdt_total * deltaTime;
 
     // --- mechanical torque balance ---
     double tau_drive;
-    if (omega < omega_cutoff) {
-      tau_drive   = starter_torque;
-      tau_starter = starter_torque;
-      tau_turbine = 0;
+    if (omega[engineIdx] < omega_cutoff) {
+      tau_drive = starter_torque;
+      tau_starter[engineIdx] = starter_torque;
+      tau_turbine[engineIdx] = 0;
     } else {
       // turbine torque approx from combustion power
-      tau_drive   = torque_power_factor * P_comb;
-      tau_starter = 0;
-      tau_turbine = tau_drive;
+      tau_drive = torque_power_factor * P_comb;
+      tau_starter[engineIdx] = 0;
+      tau_turbine[engineIdx] = tau_drive;
     }
-    tau_drag           = k_drag * omega * omega;
-    const double alpha = (tau_drive - tau_drag) / I_fan;
-    omega              = std::max(0., omega + alpha * deltaTime);
+    tau_drag[engineIdx] = k_drag * omega[engineIdx] * omega[engineIdx];
+    const double alpha = (tau_drive - tau_drag[engineIdx]) / I_fan;
+    omega[engineIdx] = std::max(0., omega[engineIdx] + alpha * deltaTime);
 
     // --- thrust calculation (propulsion eqn approx) ---
     double V_e_core;
-    if (TGT > Tamb) {
-      V_e_core = sqrt(2 * cp_air * (TGT - Tamb) * nozzle_eta);
+    if (TGT[engineIdx] > Tamb) {
+      V_e_core = sqrt(2 * cp_air * (TGT[engineIdx] - Tamb) * nozzle_eta);
     } else {
       V_e_core = 0;
     }
     const double dV_bypass = dV_bypass_full * r;
-    const double F_core    = mdot_core * (V_e_core - 0);  // assume V0=0 (static test)
-    const double F_bypass  = mdot_bypass * dV_bypass;
-    Thrust_N               = F_core + F_bypass;
+    const double F_core =
+        mdot_core[engineIdx] * (V_e_core - 0); // assume V0=0 (static test)
+    const double F_bypass = mdot_bypass[engineIdx] * dV_bypass;
+    Thrust_N[engineIdx] = F_core + F_bypass;
 
-    printf("engine_sim: time: %.2f, omega: %.2f, ff: %.3f, commanded ff: %.3f, tgt: %.2f, thr: %.2f\n", engineTimer, omega, fuel_actual,
-           fuel_cmd, TGT, Thrust_N);
+    printf("engine_sim(%d): time: %.2f, omega: %.2f, ff: %.3f, commanded ff: "
+           "%.3f, tgt: %.2f, thr: %.2f\n",
+           engine, engineTimer, omega[engineIdx], fuel_actual[engineIdx],
+           fuel_cmd[engineIdx], TGT[engineIdx], Thrust_N[engineIdx]);
 
     // We take the N3 values from the current simulation
     const double preN3Fbw = simData.engineN3[engineIdx]->get();
     const double newN3Fbw = Polynomial_A380X::startN3(simN3, preN3Fbw, idleN3);
     simData.engineN3[engineIdx]->set(newN3Fbw);
-    simData.engineN2[engineIdx]->set(newN3Fbw == 0 ? 0 : newN3Fbw + 0.7);  // 0.7 seems to be an arbitrary offset to get N2 from N3
-    simData.engineN1[engineIdx]->set(omega / omega_max * 100.);
-    simData.engineFF[engineIdx]->set(fuel_actual * 3600.);
-    simData.engineEgt[engineIdx]->set(TGT - 273.15);
+    simData.engineN2[engineIdx]->set(
+        newN3Fbw == 0
+            ? 0
+            : newN3Fbw +
+                  0.7); // 0.7 seems to be an arbitrary offset to get N2 from N3
+    simData.engineN1[engineIdx]->set(omega[engineIdx] / omega_max * 100.);
+    simData.engineFF[engineIdx]->set(fuel_actual[engineIdx] * 3600.);
+    simData.engineEgt[engineIdx]->set(TGT[engineIdx] - 273.15);
 
     // Current simulation
     /*
@@ -1302,4 +1330,117 @@ void EngineControl_A380X::updateOil(int          engine,
   simData.engineOilTotal[engineIdx]->set(oilTotalActual);
   simData.oilPsiDataPtr[engineIdx]->data().oilPsi = oilPressure;
   simData.oilPsiDataPtr[engineIdx]->writeDataToSim();
+}
+
+constexpr std::pair<double, double>
+torque_components(double omega, double V, double rho, double N_blades,
+                  double r_mean, double S_strip, double blade_pitch,
+                  double Cl_alpha, double Cd0, double C_viscous,
+                                                      double T_bearing) {
+  // Estimate aerodynamic torque from ram air on blades (single representative
+  // strip) relative velocity at strip:
+  auto U_rot = omega * r_mean; // tangential velocity at r_mean
+  auto U_rel = sqrt(U_rot * U_rot + V * V);
+  // local inflow angle (rad) = atan(V / (omega*r))
+  double alpha_local;
+  if (omega <= 1e-6) {
+    alpha_local = atan(V / 1e-6) - blade_pitch;
+  } else {
+    alpha_local = atan(V / (omega * r_mean)) - blade_pitch;
+  }
+  // lift coefficient (linear approx)
+  auto Cl = Cl_alpha * alpha_local;
+  // simple drag coefficient (profile)
+  auto Cd = Cd0 + 0.01 * Cl * Cl;
+  // Force on strip (per blade)
+  auto L_strip = 0.5 * rho * U_rel * U_rel * S_strip * Cl; // lift-like force
+  auto D_strip =
+      0.5 * rho * U_rel * U_rel * S_strip * Cd; // profile drag along chord
+  // We treat L_strip primarily producing torque (force * r_mean)
+  auto F_effective = L_strip; // approximation
+  auto T_aero = N_blades * F_effective * r_mean;
+  // Drag torques: profile drag + viscous/spinning losses + bearing friction
+  auto T_profile = N_blades * D_strip * r_mean;
+  auto T_viscous = C_viscous * omega * omega;
+  // static bearing friction (opposes motion, saturates)
+  auto T_bear = T_bearing * (omega > 1e-3);
+  auto T_drag_total = T_profile + T_viscous + T_bear;
+  // If aerodynamic torque is negative (very high omega causing negative AoA),
+  // allow it to act as additional drag (this is physically possible)
+  if (T_aero < 0) {
+    T_drag_total = T_drag_total - T_aero; // move to drag side
+    T_aero = 0;
+  }
+  return {T_aero, T_drag_total};
+}
+
+constexpr double domega_dt(double dt, double omega, double V, double rho,
+                           double N_blades, double r_mean, double S_strip,
+                           double blade_pitch, double Cl_alpha, double Cd0,
+                           double I, double C_viscous, double T_bearing) {
+  // Compute net angular acceleration d(omega) / dt
+  auto [Taero, Tdrag] =
+      torque_components(omega, V, rho, N_blades, r_mean, S_strip, blade_pitch,
+                        Cl_alpha, Cd0, C_viscous, T_bearing);
+  return (Taero - Tdrag) / I;
+}
+
+void EngineControl_A380X::updateWindmilling(int engine, double deltaTime,
+                                            double airspeed,
+                                            double ambientDensity) {
+  const int engineIdx = engine - 1;
+  // ----- Aircraft / flight conditions (you can change these) -----
+  const double V = airspeed;
+  const double rho = ambientDensity; // kg / m ^ 3
+
+  // ----- Fan / rotor geometry & blade properties -----
+  const double N_blades = 24;      // user-specified
+  const double R = 1.475;          // fan radius (m) — adjust to match engine
+  const double blade_span = R;     // approx blade length (m)
+  const double blade_chord = 0.18; // mean chord (m)
+  const double r_mean = 0.63 * R;  // representative radius for moment arm (m)
+  const double dr = blade_span;    // using a single representative strip (m)
+  const double S_blade_strip =
+      blade_chord * dr; // area of the representative strip (m^2)
+
+  // ----- Aerodynamic coefficients (tune these) -----
+  const double Cl_alpha =
+      2 * M_PI; // 2D lift slope (per rad) - typical approximation
+  const double blade_pitch =
+      deg2rad(2.5);        // geometric pitch angle (rad) - adjust to taste
+  const double Cd0 = 0.01; // profile drag coefficient baseline
+
+  // ----- Rotational inertia & drag -----
+  const double m_rotor = 150; // rotating mass (kg) — approximate for fan+hub
+  const double I =
+      m_rotor * R * R * 0.25;    // rough estimate for disk-like rotor (kg*m^2)
+  const double C_viscous = 0.02; // viscous coefficient (N*m/(rad/s)^2) - tune
+  const double T_bearing = 20;   // static friction torque (N*m) at low speed
+
+  // ----- Design (for converting to N1%) -----
+  const double rpm_design = 6000; // design fan speed in RPM (typical order)
+  const double omega_design = rpm_design * 2 * M_PI / 60.; // rad/s
+
+  // ----- Initial condition -----
+  omega[engineIdx] = simData.engineN1[engineIdx]->get() / 100. * omega_design;
+
+  // From ChatGPT
+  // Compute derivatives & torques
+  auto dOmega = domega_dt(deltaTime, omega[engineIdx], V, rho, N_blades, r_mean,
+                          S_blade_strip, blade_pitch, Cl_alpha, Cd0, I,
+                          C_viscous, T_bearing);
+  // Integrate (explicit Euler)
+  omega[engineIdx] += deltaTime * dOmega;
+  // Enforce non-negative omega (like omega = max(omega,0) in MATLAB)
+  if (omega[engineIdx] < 0.0) {
+    omega[engineIdx] = 0.0;
+  }
+
+  printf("windmill_sim(%d): airspeed: %.2f, density: %.2f => omega: "
+         "%.2f(%.2f%%N1)\n",
+         engine, V, rho, omega[engineIdx],
+         omega[engineIdx] / omega_design * 100.);
+
+  // Write back to sim
+  simData.engineN1[engineIdx]->set(omega[engineIdx] / omega_design * 100.);
 }
