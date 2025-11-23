@@ -17,9 +17,7 @@
 #include <algorithm>
 
 // Matlab helper functions
-constexpr double deg2rad(double deg) {
-  return deg * M_PI / 180.0;
-}
+constexpr double deg2rad(double deg) { return deg * M_PI / 180.0; }
 
 void EngineControl_A380X::initialize(MsfsHandler* msfsHandler) {
   this->msfsHandlerPtr = msfsHandler;
@@ -52,12 +50,19 @@ void EngineControl_A380X::update() {
     fadecInitialized = true;
   }
 
-  const double deltaTime          = std::max(0.002, msfsHandlerPtr->getSimulationDeltaTime());
-  const double mach               = simData.simVarsDataPtr->data().airSpeedMach;
-  const double pressureAltitude   = simData.simVarsDataPtr->data().pressureAltitude;
-  const double ambientTemperature = simData.simVarsDataPtr->data().ambientTemperature;
-  const double ambientPressure    = simData.simVarsDataPtr->data().ambientPressure;
-  const double idleN3             = simData.engineIdleN3->get();
+  const double deltaTime =
+      std::max(0.002, msfsHandlerPtr->getSimulationDeltaTime());
+  const double mach = simData.simVarsDataPtr->data().airSpeedMach;
+  const double trueAirspeed = simData.simVarsDataPtr->data().trueAirspeed;
+  const double pressureAltitude =
+      simData.simVarsDataPtr->data().pressureAltitude;
+  const double ambientTemperature =
+      simData.simVarsDataPtr->data().ambientTemperature;
+  const double ambientPressure = simData.simVarsDataPtr->data().ambientPressure;
+  // Ambient air density in kg/m³
+  const double ambientDensity =
+      simData.simVarsDataPtr->data().ambientDensity * 515.3788183932;
+  const double idleN3 = simData.engineIdleN3->get();
 
   generateIdleParameters(pressureAltitude, mach, ambientTemperature, ambientPressure);
 
@@ -96,7 +101,7 @@ void EngineControl_A380X::update() {
         updateFF(engine, simCN1, mach, pressureAltitude, ambientTemperature, ambientPressure);
         break;
       case OFF:
-        updateWindmilling(engine, engineState, deltaTime);
+      updateWindmilling(engine, deltaTime, trueAirspeed, ambientDensity);
       default:
         updatePrimaryParameters(engine, simN1, simN3);
         double correctedFuelFlow = updateFF(engine, simCN1, mach, pressureAltitude, ambientTemperature, ambientPressure);
