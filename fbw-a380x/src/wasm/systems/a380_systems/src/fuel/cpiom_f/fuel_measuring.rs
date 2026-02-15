@@ -51,6 +51,16 @@ impl<T> AlternateOption<T> {
     }
 }
 impl<T: Copy> AlternateOption<T> {
+    /// Given two optional values, mirror the opposite
+    /// when one side is missing. If both are missing, both stay `None`.
+    fn mirror_pair(left: Option<T>, right: Option<T>) -> (Self, Self) {
+        let left: Self = left.into();
+        let right: Self = right.into();
+        let l = left.or(right);
+        let r = right.or(left);
+        (l, r)
+    }
+
     fn or(self, other: Self) -> Self {
         match (self, other) {
             (Self::Some(_), _) => self,
@@ -210,23 +220,10 @@ impl FuelMeasuringApplication {
         let left_quantity = fqdc.get_tank_quantity(left_tank).normal_value();
         let right_quantity = fqdc.get_tank_quantity(right_tank).normal_value();
 
-        let (l_resolved, r_resolved) = Self::mirror_pair(left_quantity, right_quantity);
+        let (l_resolved, r_resolved) = AlternateOption::mirror_pair(left_quantity, right_quantity);
 
         self.tank_quantities[left_tank.into_usize()] = l_resolved;
         self.tank_quantities[right_tank.into_usize()] = r_resolved;
-    }
-
-    /// Given two optional values, mirror the opposite
-    /// when one side is missing. If both are missing, both stay `None`.
-    fn mirror_pair<T: Copy>(
-        left: Option<T>,
-        right: Option<T>,
-    ) -> (AlternateOption<T>, AlternateOption<T>) {
-        let left: AlternateOption<T> = left.into();
-        let right: AlternateOption<T> = right.into();
-        let l = left.or(right);
-        let r = right.or(left);
-        (l, r)
     }
 }
 
@@ -296,28 +293,28 @@ mod tests {
 
         #[test]
         fn both_present() {
-            let (l, r) = FuelMeasuringApplication::mirror_pair(Some(10u32), Some(20));
+            let (l, r) = AlternateOption::mirror_pair(Some(10u32), Some(20));
             assert_eq!(l, AlternateOption::Some(10));
             assert_eq!(r, AlternateOption::Some(20));
         }
 
         #[test]
         fn left_missing_mirrors_right() {
-            let (l, r) = FuelMeasuringApplication::mirror_pair(None, Some(20));
+            let (l, r) = AlternateOption::mirror_pair(None, Some(20));
             assert_eq!(l, AlternateOption::Alternate(20));
             assert_eq!(r, AlternateOption::Some(20));
         }
 
         #[test]
         fn right_missing_mirrors_left() {
-            let (l, r) = FuelMeasuringApplication::mirror_pair(Some(10u32), None);
+            let (l, r) = AlternateOption::mirror_pair(Some(10u32), None);
             assert_eq!(l, AlternateOption::Some(10));
             assert_eq!(r, AlternateOption::Alternate(10));
         }
 
         #[test]
         fn both_missing_stay_none() {
-            let (l, r) = FuelMeasuringApplication::mirror_pair::<u32>(None, None);
+            let (l, r) = AlternateOption::<u32>::mirror_pair(None, None);
             assert_eq!(l, AlternateOption::None);
             assert_eq!(r, AlternateOption::None);
         }

@@ -761,7 +761,7 @@ impl A380FuelQuantityManagementSystem {
         self.fqms_status_word = Default::default();
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(super) fn refuel_application(&mut self) -> &mut RefuelApplication {
         &mut self.refuel_application
     }
