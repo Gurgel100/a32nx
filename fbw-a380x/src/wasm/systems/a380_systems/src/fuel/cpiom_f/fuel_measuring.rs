@@ -9,9 +9,19 @@ use uom::si::{
     ratio::ratio,
 };
 
+/// Approximate *relative* locations of each A380 fuel tank within the aircraft reference frame.
+///
+/// Values are expressed as percentages of the airframe dimensions (normalized coordinates),
+/// not meters. The Vector3 components map to the aircraft axes:
+///
+///   x: longitudinal position (aft/forward) (negative/positive)
+///   y: lateral position (left/right) (negative/positive)
+///   z: vertical position (down/up) (negative/positive)
+///
+/// These positions are used as representative tank centroids for CG calculation and
+/// distribution logic (i.e., they are not exact geometric tank shapes).
 static FUEL_TANK_POSITIONS: LazyLock<[Vector3<f64>; A380FuelTankType::LENGTH]> =
     LazyLock::new(|| {
-        // The fuel tank positions in percent
         enum_map! {
             A380FuelTankType::LeftOuter => Vector3::new(-25., -100.0, 8.5),
             A380FuelTankType::FeedOne => Vector3::new(-7.45, -71.0, 7.3),
