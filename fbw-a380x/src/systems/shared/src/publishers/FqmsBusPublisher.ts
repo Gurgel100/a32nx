@@ -42,7 +42,7 @@ interface FqmsBusBaseEvents {
    * | 19  | Left Inner Aft Pump running     |
    * | 20  | Left Trim Pump running          |
    */
-  fqms_fuel_pump_running_left: number;
+  fqms_fuel_pump_running_left_word: number;
   /**
    * Discrete status word for the right fuel pump status, raw ARINC word.
    * | Bit |            Description            |
@@ -58,7 +58,7 @@ interface FqmsBusBaseEvents {
    * | 19  | Right Inner Aft Pump running     |
    * | 20  | Right Trim Pump running          |
    */
-  fqms_fuel_pump_running_right: number;
+  fqms_fuel_pump_running_right_word: number;
 }
 /**
  * Events for FQMS bus local vars.
@@ -80,8 +80,14 @@ export class FqmsBusPublisher extends SimVarPublisher<FqmsBusEvents> {
       ['fqms_total_fuel_on_board', { name: 'L:A32NX_FQMS_TOTAL_FUEL_ON_BOARD', type: SimVarValueType.Enum }],
       ['fqms_gross_weight', { name: 'L:A32NX_FQMS_GROSS_WEIGHT', type: SimVarValueType.Enum }],
       ['fqms_center_of_gravity_mac', { name: 'L:A32NX_FQMS_CENTER_OF_GRAVITY_MAC', type: SimVarValueType.Enum }],
-      ['fqms_fuel_pump_running_left', { name: 'L:A32NX_FQMS_LEFT_FUEL_PUMPS_RUNNING', type: SimVarValueType.Enum }],
-      ['fqms_fuel_pump_running_right', { name: 'L:A32NX_FQMS_RIGHT_FUEL_PUMPS_RUNNING', type: SimVarValueType.Enum }],
+      [
+        'fqms_fuel_pump_running_left_word',
+        { name: 'L:A32NX_FQMS_LEFT_FUEL_PUMP_RUNNING_WORD', type: SimVarValueType.Number },
+      ],
+      [
+        'fqms_fuel_pump_running_right_word',
+        { name: 'L:A32NX_FQMS_RIGHT_FUEL_PUMP_RUNNING_WORD', type: SimVarValueType.Number },
+      ],
     ]);
 
     super(simvars, bus, pacer);
