@@ -2755,18 +2755,6 @@ export class FwsCore {
       return;
     }
 
-    if (
-      !this.fuelingInitiated.get() ||
-      !this.eng1ShutDown.get() ||
-      !this.eng2ShutDown.get() ||
-      !this.eng3ShutDown.get() ||
-      !this.eng4ShutDown.get()
-    ) {
-      this.fuelOnBoard.pause();
-    } else {
-      this.fuelOnBoard.resume();
-    }
-
     if (!this.aircraftOnGround.get()) {
       this.fuelingTarget.pause();
       this.fuelingInitiated.pause();
