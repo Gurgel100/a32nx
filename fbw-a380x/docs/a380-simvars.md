@@ -982,6 +982,31 @@
   - Number in Gallons
   - The total physical volume of fuel in the tanks
 
+- A32NX_FQMS_STATUS_WORD
+  - Status word indicating different status
+  - Arinc429<Discrete>
+  - | Bit |      Description A380X, if different     |
+    |:---:|:----------------------------------------:|
+    | 0   | FMS Data disagrees                       |
+    | 1   | |
+    | 2   | |
+    | 3   | |
+    | 4   | |
+    | 5   | |
+    | 6   | |
+    | 7   | |
+    | 8   | |
+    | 9   | |
+    | 10  | |
+    | 11  | |
+    | 12  | |
+    | 13  | |
+    | 14  | |
+    | 15  | |
+    | 16  | |
+    | 17  | |
+    | 18  | |
+
 ## Indicating-Recording ATA 31
 
 - A32NX_CDS_CAN_BUS_1_1_AVAIL

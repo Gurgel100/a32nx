@@ -31,7 +31,6 @@ use electrical::{
     APU_START_MOTOR_BUS_TYPE,
 };
 use fire_and_smoke_protection::A380FireAndSmokeProtection;
-use fuel::FuelLevel;
 use hydraulic::{autobrakes::A380AutobrakePanel, A380Hydraulic, A380HydraulicOverheadPanel};
 use icing::Icing;
 use navigation::{A380AirDataInertialReferenceSystemBuilder, A380RadioAltimeters};

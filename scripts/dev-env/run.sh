@@ -11,9 +11,9 @@ fi
 # Disable git-bash path conversion on windows
 export MSYS_NO_PATHCONV=1
 
-docker image inspect $IMAGE 1> /dev/null || docker system prune --filter label=flybywiresim=true -f
+podman image inspect $IMAGE 1> /dev/null || podman system prune --filter label=flybywiresim=true -f
 
-docker run \
+podman run \
     --rm $TTY_PARAM \
     -e GITHUB_ACTIONS="${GITHUB_ACTIONS}" \
     -e GITHUB_ACTOR="${GITHUB_ACTOR}" \

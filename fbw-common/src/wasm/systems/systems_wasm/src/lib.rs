@@ -3,12 +3,14 @@ pub mod aspects;
 mod anti_ice;
 mod electrical;
 mod failures;
+mod fuel;
 mod msfs;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::msfs::legacy::{AircraftVariable, NamedVariable};
 #[cfg(target_arch = "wasm32")]
 use ::msfs::legacy::{AircraftVariable, NamedVariable};
+use fuel::{fuel_pumps, fuel_valves};
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::msfs::commbus::{CommBus, CommBusBroadcastFlags};
@@ -122,6 +124,21 @@ impl<'a, 'b> MsfsSimulationBuilder<'a, 'b> {
 
     pub fn with_wing_anti_ice(self) -> Result<Self, Box<dyn Error>> {
         self.with_aspect(wing_anti_ice())
+    }
+
+    pub fn with_fuel_pumps(
+        self,
+        pump_indexes: impl IntoIterator<Item = u32>,
+    ) -> Result<Self, Box<dyn Error>> {
+        self.with_aspect(fuel_pumps(pump_indexes))
+    }
+
+    pub fn with_fuel_valves(
+        self,
+        valve_indexes: impl IntoIterator<Item = u32>,
+        pump_circuit_ids: impl IntoIterator<Item = u32>,
+    ) -> Result<Self, Box<dyn Error>> {
+        self.with_aspect(fuel_valves(valve_indexes, pump_circuit_ids))
     }
 
     pub fn with_failures(mut self, failures: impl IntoIterator<Item = (u64, FailureType)>) -> Self {

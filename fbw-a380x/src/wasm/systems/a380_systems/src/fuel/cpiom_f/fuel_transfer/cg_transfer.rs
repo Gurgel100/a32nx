@@ -1,14 +1,14 @@
+use crate::fuel::{
+    cpiom_f::{
+        fuel_transfer::FuelTransfer, FuelQuantityProvider, TankMode, TransferGalleryConnections,
+        FEED_TANKS, INNER_TANKS, MID_TANKS,
+    },
+    A380FuelTankType,
+};
 use uom::si::{
     f64::{Mass, Ratio},
     mass::pound,
     ratio::percent,
-};
-
-use crate::fuel::{
-    cpiom_f::{
-        fuel_transfer::tanks_empty, FuelQuantityProvider, FEED_TANKS, INNER_TANKS, MID_TANKS,
-    },
-    A380FuelTankType,
 };
 
 #[derive(Default)]
@@ -32,26 +32,8 @@ impl CGTransfer {
         }
     }
 
-    pub(super) fn determine_target_tank(
-        &self,
-        tank_quantities: &impl FuelQuantityProvider,
-    ) -> &[A380FuelTankType] {
-        if self.active {
-            // TODO: balance tanks (by filling up lowest tanks first)
-            if !tanks_empty(tank_quantities, &INNER_TANKS) {
-                &INNER_TANKS
-            } else if !tanks_empty(tank_quantities, &MID_TANKS) {
-                &MID_TANKS
-            } else {
-                &FEED_TANKS
-            }
-        } else {
-            // No transfer needed if not active
-            &[]
-        }
-    }
-
-    pub(super) fn is_active(&self) -> bool {
+    #[cfg(test)]
+    fn is_active(&self) -> bool {
         self.active
     }
 
@@ -67,6 +49,32 @@ impl CGTransfer {
             + 0.0884071656630996 * weight
             + 20.6522282591408;
         Ratio::new::<percent>(target)
+    }
+}
+impl FuelTransfer for CGTransfer {
+    fn set_gallery_modes(
+        &self,
+        gallery_connections: &mut impl TransferGalleryConnections,
+        tank_quantities: &impl FuelQuantityProvider,
+    ) {
+        if self.active && gallery_connections.is_aft_gallery_usable() {
+            // TODO: balance tanks (by filling up lowest tanks first)
+            // TODO: what if feed tanks are full?
+            let target_tanks: &[A380FuelTankType] = if !tank_quantities.tanks_empty(INNER_TANKS) {
+                &INNER_TANKS
+            } else if !tank_quantities.tanks_empty(MID_TANKS) {
+                &MID_TANKS
+            } else {
+                &FEED_TANKS
+            };
+
+            gallery_connections.set_aft_gallery_modes(
+                target_tanks
+                    .into_iter()
+                    .map(|t| (*t, TankMode::Target))
+                    .chain([(A380FuelTankType::Trim, TankMode::Source)]),
+            );
+        }
     }
 }
 

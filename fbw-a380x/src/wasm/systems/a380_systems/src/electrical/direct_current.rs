@@ -57,6 +57,8 @@ pub(super) struct A380DirectCurrentElectrical {
     dc_ess_subbus: ElectricalBus,
     ess_refuel_bus_contactors: [Contactor; 2],
     ess_fuel_buses: [ElectricalBus; 2],
+    refuel_on_bat_contactors: [Contactor; 2],
+    refuel_on_bat_bus: ElectricalBus,
 }
 impl A380DirectCurrentElectrical {
     pub fn new(context: &mut InitContext) -> Self {
@@ -134,6 +136,13 @@ impl A380DirectCurrentElectrical {
                 .map(|i| Contactor::new(context, &format!("20PR.{i}"))),
             ess_fuel_buses: ["501PP", "503PP"]
                 .map(|name| ElectricalBus::new(context, ElectricalBusType::Sub(name))),
+            // 21PR + 1000PR3 (using two contactors as the current electrical model doesn't support switches)
+            refuel_on_bat_contactors: [1, 2]
+                .map(|i| Contactor::new(context, &format!("1000PR3.{i}"))),
+            refuel_on_bat_bus: ElectricalBus::new(
+                context,
+                ElectricalBusType::DirectCurrentNamed("502PP"),
+            ),
         }
     }
 
@@ -347,16 +356,24 @@ impl A380DirectCurrentElectrical {
 
         // TODO: implement refuel on bat switching
         let mut refuel_on_bat = false;
-        for c in &mut self.ess_refuel_bus_contactors {
-            c.close_when(refuel_on_bat);
+        for (ess, dc2) in self
+            .ess_refuel_bus_contactors
+            .iter_mut()
+            .zip(&mut self.refuel_on_bat_contactors)
+        {
+            ess.close_when(refuel_on_bat);
+            dc2.close_when(refuel_on_bat);
             refuel_on_bat = !refuel_on_bat;
 
-            for b in &self.ess_fuel_buses {
-                electricity.flow(c, b);
+            for bus in &self.ess_fuel_buses {
+                electricity.flow(ess, bus);
             }
+            electricity.flow(dc2, &self.refuel_on_bat_bus);
         }
         electricity.flow(&self.dc_ess_bus, &self.ess_refuel_bus_contactors[0]);
         electricity.flow(&self.hot_bus_ess, &self.ess_refuel_bus_contactors[1]);
+        electricity.flow(&self.dc_bus_2, &self.refuel_on_bat_contactors[0]);
+        electricity.flow(&self.hot_bus_2, &self.refuel_on_bat_contactors[1]);
     }
 
     #[cfg(test)]

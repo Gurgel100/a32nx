@@ -564,6 +564,7 @@ The StepType also defines if the step is executed in normal mode, expedited mode
                 2 (&gt;K:TURBINE_IGNITION_SWITCH_SET4)
             </Action>
         </Step>
+        <!-- TODO: switch to variable for button press -->
         <Step Name="ENG 1 On" Type="STEP" Delay="1000">
             <Condition>(A:FUELSYSTEM VALVE OPEN:1, Bool)</Condition>
             <Action>1 (&gt;K:FUELSYSTEM_VALVE_OPEN)</Action>

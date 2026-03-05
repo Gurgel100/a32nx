@@ -10,14 +10,15 @@ use crate::systems::simulation::{
     Aircraft, SimulationElement, SimulationElementVisitor,
 };
 struct FuelTestAircraft {
+    acdn: A380AvionicsDataCommunicationNetwork,
     fuel: A380Fuel,
 }
 
 impl FuelTestAircraft {
     fn new(context: &mut InitContext) -> Self {
-        Self {
-            fuel: A380Fuel::new(context),
-        }
+        let mut acdn = A380AvionicsDataCommunicationNetwork::new(context);
+        let fuel = A380Fuel::new(context, &mut acdn);
+        Self { acdn, fuel }
     }
 
     fn fore_aft_center_of_gravity(&self) -> f64 {
@@ -35,11 +36,13 @@ impl Aircraft for FuelTestAircraft {
         context: &UpdateContext,
         _electricity: &mut Electricity,
     ) {
-        self.fuel.update(context);
+        self.acdn.update();
+        self.fuel.update(context, &self.acdn);
     }
 }
 impl SimulationElement for FuelTestAircraft {
     fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
+        self.acdn.accept(visitor);
         self.fuel.accept(visitor);
 
         visitor.visit(self);
