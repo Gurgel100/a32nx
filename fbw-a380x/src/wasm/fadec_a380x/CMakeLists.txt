@@ -18,6 +18,7 @@ set(SOURCE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Fadec_A380X.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/EngineControl_A380X.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/FuelConfiguration_A380X.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Trent900/fbw_a380_trent900_bridge.c
 )
 
 set(INCLUDE_FILES
@@ -30,6 +31,7 @@ set(INCLUDE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/ThrustLimits_A380X.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Polynomials_A380X.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Table1502_A380X.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Trent900/fbw_a380_trent900_bridge.h
 )
 
 # create the targets

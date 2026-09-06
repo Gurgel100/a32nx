@@ -1,19 +1,20 @@
-// Copyright (c) 2023-2024 FlyByWire Simulations
+// Copyright (c) 2023-2026 FlyByWire Simulations
 // SPDX-License-Identifier: GPL-3.0
 
+#include <cstdio>
 #include "logging.h"
 #ifdef PROFILING
 #include "ScopedTimer.hpp"
 #include "SimpleProfiler.hpp"
 #endif
 
+#include "Fadec.h"
+
 #include "EngineControl_A380X.h"
-#include "EngineRatios.hpp"
 #include "Polynomials_A380X.hpp"
-#include "Table1502_A380X.hpp"
-#include "ThrustLimits_A380X.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 void EngineControl_A380X::initialize(MsfsHandler* msfsHandler) {
   this->msfsHandlerPtr = msfsHandler;
@@ -51,78 +52,129 @@ void EngineControl_A380X::update() {
   const double pressureAltitude   = simData.simVarsDataPtr->data().pressureAltitude;
   const double ambientTemperature = simData.simVarsDataPtr->data().ambientTemperature;
   const double ambientPressure    = simData.simVarsDataPtr->data().ambientPressure;
-  const double idleN3             = simData.engineIdleN3->get();
 
-  generateIdleParameters(pressureAltitude, mach, ambientTemperature, ambientPressure);
+  // Atmospheric & flight environment for the Trent 900 cycle
+  FBW_A380_EnvironmentInputs env;
+  env.ambient_static_press_pa  = ambientPressure * 100.0;  // hPa -> Pa
+  env.ambient_static_temp_k    = ambientTemperature + 273.15;
+  env.true_airspeed_ms         = mach * std::sqrt(1.4 * 287.05 * env.ambient_static_temp_k);
+  env.flight_mach              = mach;
+  env.pressure_altitude_ft     = pressureAltitude;
+  env.angle_of_attack_deg      = 0.0;
+  env.crosswind_component_kts  = 0.0;
+  env.sim_delta_time_s         = deltaTime;
 
-  // Update engine states
+  // Per-engine cockpit & system inputs
+  const bool packBleed = simData.packsState[0]->get() || simData.packsState[1]->get();
+  const int  wai       = simData.wingAntiIce->getAsInt64();
+
+  FBW_A380_EngineInputs inputs[FBW_A380_NUM_ENGINES];
+  for (int i = 0; i < FBW_A380_NUM_ENGINES; i++) {
+    // The Rust reverser system owns the blocker doors and the reverse thrust;
+    // hold the bridge at the idle detent so it keeps forward idle during reverse.
+    double tla = simData.engineTla[i + 1]->get();
+    tla        = std::max(-20.0, std::min(53.0, tla));
+    inputs[i].throttle_lever_angle_deg = std::max(tla, 20.0);
+    inputs[i].master_switch_on         = simData.simVarsDataPtr->data().engineIgniter[i] != 0;
+    inputs[i].fire_pushbutton_released = simData.fireButton[i]->getAsBool();
+    inputs[i].starter_valve_open       = simData.simVarsDataPtr->data().engineStarter[i] != 0;
+    inputs[i].igniters_armed           = simData.simVarsDataPtr->data().engineIgniter[i] == 2;
+    inputs[i].ecs_pack_bleed_active    = packBleed;
+    inputs[i].anti_ice_bleed_active    = (simData.simVarsDataPtr->data().engineAntiIce[i] > 0.5) || wai != 0;
+    inputs[i].vfg_elec_load_kva        = 0.0;
+    inputs[i].fault_flameout           = false;
+    inputs[i].fault_egt_sensor_drift   = false;
+    inputs[i].fault_p02_probe_loss     = false;
+    inputs[i].fault_fuel_boost_pump    = false;
+    inputs[i].fault_comp_stall         = false;
+    printf("eng %i inputs: tla=%.1lf, ms=%s, fpb=%s, sv=%s, ign=%s, bleed=%s, ai=%s\n",
+      i,
+      inputs[i].throttle_lever_angle_deg,
+      inputs[i].master_switch_on ? "on" : "off",
+      inputs[i].fire_pushbutton_released ? "off" : "on",
+      inputs[i].starter_valve_open ? "open" : "closed",
+      inputs[i].igniters_armed ? "on" : "off",
+      inputs[i].ecs_pack_bleed_active ? "on" : "off",
+      inputs[i].anti_ice_bleed_active ? "on" : "off"
+    );
+  }
+
+  // Run the Trent 900 cycle for the whole fleet
+  FBW_A380_FleetOutputs outputs;
+  FBW_A380_Trent900_Update(&env, inputs, &outputs);
+
+  // Write the cycle results back to the simulator and the ECAM LVars
   for (int engine = 1; engine <= 4; engine++) {
     const int engineIdx = engine - 1;
 
-    const bool engineStarter = static_cast<bool>(simData.simVarsDataPtr->data().engineStarter[engineIdx]);
-    const int  engineIgniter = static_cast<int>(simData.simVarsDataPtr->data().engineIgniter[engineIdx]);
+    EngineState engineState = updateEngineState(engine,
+                                                outputs.engines[engineIdx],
+                                                inputs[engineIdx].master_switch_on,
+                                                inputs[engineIdx].starter_valve_open,
+                                                inputs[engineIdx].igniters_armed,
+                                                inputs[engineIdx].fire_pushbutton_released,
+                                                ambientTemperature,
+                                                deltaTime);
 
-    // determine the current engine state based on the previous state and the current ignition, starter and other parameters
-    // also resets the engine timer if the engine is starting or restarting
-    EngineState engineState = engineStateMachine(engine,                      //
-                                                 engineIgniter,               //
-                                                 engineStarter,               //
-                                                 prevSimEngineN3[engineIdx],  //
-                                                 idleN3,                      //
-                                                 ambientTemperature);         //
-
-    const bool   simOnGround   = msfsHandlerPtr->getSimOnGround();
-    const double engineTimer   = simData.engineTimer[engineIdx]->get();
-    const double simCN1        = simData.engineCorrectedN1DataPtr[engineIdx]->data().correctedN1;
-    const double simN1         = simData.simVarsDataPtr->data().simEngineN1[engineIdx];
-    const double simN3         = simData.simVarsDataPtr->data().simEngineN2[engineIdx];  // as the sim does not have N3, we use N2
-    const double deltaN3       = simN3 - prevSimEngineN3[engineIdx];
-    prevSimEngineN3[engineIdx] = simN3;
-
-    // Update various engine values based on the current engine state
-    switch (static_cast<int>(engineState)) {
-      case STARTING:
-      case RESTARTING:
-        engineStartProcedure(engine, engineState, deltaTime, engineTimer, simN3, ambientTemperature);
-        break;
-      case SHUTTING:
-        engineShutdownProcedure(engine, deltaTime, engineTimer, simN1, ambientTemperature);
-        updateFF(engine, simCN1, mach, pressureAltitude, ambientTemperature, ambientPressure);
-        break;
-      default:
-        updatePrimaryParameters(engine, simN1, simN3);
-        double correctedFuelFlow = updateFF(engine, simCN1, mach, pressureAltitude, ambientTemperature, ambientPressure);
-        updateEGT(engine, engineState, deltaTime, simCN1, correctedFuelFlow, mach, pressureAltitude, ambientTemperature, simOnGround);
-        updateSecondaryParameters(engine, engineState, deltaTime, simOnGround, ambientTemperature, deltaN3);
-        break;
+    // Quick start / quick shutdown for expedited engine handling in Aircraft Presets
+    if (simData.fadecQuickMode->getAsBool()) {
+      if (engineState == STARTING || engineState == RESTARTING) {
+        LOG_INFO("Fadec::EngineControl_A380X::update() - Quick Start");
+        FBW_A380_Trent900_ResetEngine(engineIdx, true);
+        FBW_A380_Trent900_Update(&env, inputs, &outputs);
+        engineState = ON;
+        simData.engineTimer[engineIdx]->set(0);
+      } else if (engineState == SHUTTING) {
+        LOG_INFO("Fadec::EngineControl_A380X::update() - Quick Shutdown");
+        FBW_A380_Trent900_ResetEngine(engineIdx, false);
+        FBW_A380_Trent900_Update(&env, inputs, &outputs);
+        engineState = OFF;
+        simData.engineTimer[engineIdx]->set(0);
+      }
     }
+
+    const FBW_A380_EngineOutputs& o = outputs.engines[engineIdx];
+    simData.engineState[engineIdx]->set(static_cast<int>(engineState));
+
+    simData.engineN1[engineIdx]->set(o.N1_pct);
+    simData.engineN2[engineIdx]->set(o.N2_pct);
+    simData.engineN3[engineIdx]->set(o.N3_pct);
+    // simData.engineN2[engineIdx]->set(o.N3_pct == 0 ? 0 : o.N3_pct + 0.7);  // A380X convention: N2 carries the HP spool
+    simData.engineEgt[engineIdx]->set(o.egt_c);
+    simData.engineFF[engineIdx]->set(o.fuel_flow_kgh);
+
+    // The corrected N1/N2 drive the sim's flight model (N2 carries the HP spool, as before)
+    simData.engineCorrectedN1DataPtr[engineIdx]->data().correctedN1 = o.N1_pct;
+    simData.engineCorrectedN1DataPtr[engineIdx]->writeDataToSim();
+    simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 = o.N3_pct;
+    simData.engineCorrectedN3DataPtr[engineIdx]->writeDataToSim();
+
+    simData.oilTempDataPtr[engineIdx]->data().oilTemp = o.oil_temperature_c;
+    simData.oilTempDataPtr[engineIdx]->writeDataToSim();
+    simData.oilPsiDataPtr[engineIdx]->data().oilPsi = o.oil_pressure_psi;
+    simData.oilPsiDataPtr[engineIdx]->writeDataToSim();
+
+    updateOilQuantity(engine, o.net_thrust_kn * 1000.0, deltaTime);
   }
+
+  // Idle references & thrust limits (the bridge's detent N1 values)
+  simData.engineIdleN1->set(TRENT_IDLE_N1_PCT);
+  simData.engineIdleN3->set(TRENT_IDLE_N3_PCT);
+  simData.engineIdleEGT->set(TRENT_IDLE_EGT_C);
+  simData.engineIdleFF->set(TRENT_IDLE_FF_KGH);
+  simData.thrustLimitIdle->set(TRENT_IDLE_N1_PCT);
+  simData.thrustLimitClimb->set(TRENT_CLIMB_N1_PCT);
+  simData.thrustLimitFlex->set(TRENT_FLEX_N1_PCT);
+  simData.thrustLimitMct->set(TRENT_MCT_N1_PCT);
+  simData.thrustLimitToga->set(TRENT_TOGA_N1_PCT);
 
   // Update fuel & tank data
   updateFuel(deltaTime);
 
-  // Update thrust limits while considering the current bleed air settings (packs, nai, wai)
-  const int packs = (simData.packsState[0]->get() || simData.packsState[1]->get()) ? 1 : 0;
-  const int nai   = (simData.simVarsDataPtr->data().engineAntiIce[E1] > 0.5     //
-                   || simData.simVarsDataPtr->data().engineAntiIce[E2] > 0.5  //
-                   || simData.simVarsDataPtr->data().engineAntiIce[E3] > 0.5  //
-                   || simData.simVarsDataPtr->data().engineAntiIce[E4] > 0.5)
-                        ? 1
-                        : 0;
-  const int wai   = simData.wingAntiIce->getAsInt64();
-  updateThrustLimits(msfsHandlerPtr->getSimulationTime(), pressureAltitude, ambientTemperature, ambientPressure, mach, packs, nai, wai);
-
 #ifdef PROFILING
   profilerUpdate.stop();
   if (msfsHandlerPtr->getTickCounter() % 100 == 0) {
-    profilerUpdateThrustLimits.print();
     profilerUpdateFuel.print();
-    profilerUpdateEGT.print();
-    profilerUpdateFF.print();
-    profilerEngineShutdownProcedure.print();
-    profilerEngineStartProcedure.print();
-    profilerUpdatePrimaryParameters.print();
-    profilerEngineStateMachine.print();
     profilerUpdate.print();
   }
 #endif
@@ -176,12 +228,6 @@ void EngineControl_A380X::initializeEngineControlData() {
   const FLOAT64 timeStamp   = msfsHandlerPtr->getTimeStamp();
   const UINT64  tickCounter = msfsHandlerPtr->getTickCounter();
 
-  // Getting and saving initial N2 into pre (= previous) variables
-  prevSimEngineN3[0] = simData.simVarsDataPtr->data().simEngineN2[0];
-  prevSimEngineN3[1] = simData.simVarsDataPtr->data().simEngineN2[1];
-  prevSimEngineN3[2] = simData.simVarsDataPtr->data().simEngineN2[2];
-  prevSimEngineN3[3] = simData.simVarsDataPtr->data().simEngineN2[3];
-
   // Setting initial Oil Quantity and adding some randomness to it
   std::srand(std::time(0));
   simData.engineOilTotal[E1]->set((std::rand() % (MAX_OIL - MIN_OIL + 1) + MIN_OIL) / 10.0);
@@ -190,31 +236,14 @@ void EngineControl_A380X::initializeEngineControlData() {
   simData.engineOilTotal[E4]->set((std::rand() % (MAX_OIL - MIN_OIL + 1) + MIN_OIL) / 10.0);
 
   // Setting initial Oil Temperature
-  const bool simOnGround = msfsHandlerPtr->getSimOnGround();
-
-  const bool engine1Combustion = static_cast<bool>(simData.engineCombustion[E1]->updateFromSim(timeStamp, tickCounter));
-  const bool engine2Combustion = static_cast<bool>(simData.engineCombustion[E2]->updateFromSim(timeStamp, tickCounter));
-  const bool engine3Combustion = static_cast<bool>(simData.engineCombustion[E3]->updateFromSim(timeStamp, tickCounter));
-  const bool engine4Combustion = static_cast<bool>(simData.engineCombustion[E4]->updateFromSim(timeStamp, tickCounter));
-
-  thermalEnergy[E1] = 0;
-  thermalEnergy[E2] = 0;
-  thermalEnergy[E3] = 0;
-  thermalEnergy[E4] = 0;
-
-  double       oilTemperaturePre[4];
   const double ambientTemperature            = simData.simVarsDataPtr->data().ambientTemperature;
-  oilTemperaturePre[E1]                      = ambientTemperature;
-  oilTemperaturePre[E2]                      = ambientTemperature;
-  oilTemperaturePre[E3]                      = ambientTemperature;
-  oilTemperaturePre[E4]                      = ambientTemperature;
-  simData.oilTempDataPtr[E1]->data().oilTemp = oilTemperaturePre[E1];
+  simData.oilTempDataPtr[E1]->data().oilTemp = ambientTemperature;
   simData.oilTempDataPtr[E1]->writeDataToSim();
-  simData.oilTempDataPtr[E2]->data().oilTemp = oilTemperaturePre[E2];
+  simData.oilTempDataPtr[E2]->data().oilTemp = ambientTemperature;
   simData.oilTempDataPtr[E2]->writeDataToSim();
-  simData.oilTempDataPtr[E3]->data().oilTemp = oilTemperaturePre[E3];
+  simData.oilTempDataPtr[E3]->data().oilTemp = ambientTemperature;
   simData.oilTempDataPtr[E3]->writeDataToSim();
-  simData.oilTempDataPtr[E4]->data().oilTemp = oilTemperaturePre[E4];
+  simData.oilTempDataPtr[E4]->data().oilTemp = ambientTemperature;
   simData.oilTempDataPtr[E4]->writeDataToSim();
 
   // Setting initial Engine State
@@ -243,6 +272,17 @@ void EngineControl_A380X::initializeEngineControlData() {
   simData.thrustLimitFlex->set(0);
   simData.thrustLimitMct->set(0);
   simData.thrustLimitToga->set(0);
+
+  // Initialize the Trent 900 bridge to the Cold & Dark gate state
+  FBW_A380_Trent900_Initialize(ambientTemperature);
+
+  // If the sim spawns with already running engines (e.g. a running spawn),
+  // start the bridge engines at stabilized ground idle so no start sequence is shown
+  for (int i = 0; i < FBW_A380_NUM_ENGINES; i++) {
+    if (simData.simVarsDataPtr->data().simEngineN1[i] > 10.0) {
+      FBW_A380_Trent900_ResetEngine(i, true);
+    }
+  }
 }
 
 void EngineControl_A380X::initializeFuelTanks(FLOAT64 timeStamp, UINT64 tickCounter) {
@@ -297,329 +337,89 @@ void EngineControl_A380X::initializeFuelTanks(FLOAT64 timeStamp, UINT64 tickCoun
   }
 }
 
-void EngineControl_A380X::generateIdleParameters(double pressAltitude, double mach, double ambientTemperature, double ambientPressure) {
-  const double idleCN1 = Table1502_A380X::iCN1(pressAltitude, mach, ambientTemperature);
-  const double idleN1  = idleCN1 * sqrt(EngineRatios::theta2(0, ambientTemperature));
-  const double idleN3  = Table1502_A380X::iCN3(pressAltitude, mach) * sqrt(EngineRatios::theta(ambientTemperature));
-  const double idleCFF = Polynomial_A380X::correctedFuelFlow(idleCN1, 0, pressAltitude);
-  const double idleFF =
-      idleCFF * Fadec::LBS_TO_KGS * EngineRatios::delta2(0, ambientPressure) * sqrt(EngineRatios::theta2(0, ambientTemperature));
-  const double idleEGT = Polynomial_A380X::correctedEGT(idleCN1, idleCFF, 0, pressAltitude) * EngineRatios::theta2(0, ambientTemperature);
-
-  simData.engineIdleN1->set(idleN1);
-  simData.engineIdleN3->set(idleN3);
-  simData.engineIdleFF->set(idleFF);
-  simData.engineIdleEGT->set(idleEGT);
-}
-
-EngineControl_A380X::EngineState EngineControl_A380X::engineStateMachine(int    engine,
-                                                                         int    engineIgniter,
-                                                                         bool   engineStarter,
-                                                                         double simN3,
-                                                                         double idleN3,
-                                                                         double ambientTemperature) {
-#ifdef PROFILING
-  profilerEngineStateMachine.start();
-#endif
-
+EngineControl_A380X::EngineState EngineControl_A380X::updateEngineState(int    engine,
+                                                                        const FBW_A380_EngineOutputs& engineOutputs,
+                                                                        bool   masterOn,
+                                                                        bool   starterOn,
+                                                                        bool   igniterArmed,
+                                                                        bool   firePushed,
+                                                                        double oatC,
+                                                                        double deltaTime) {
   const int engineIdx = engine - 1;
-
-  bool resetTimer = false;
 
   EngineState engineState = static_cast<EngineState>(simData.engineState[engineIdx]->get());
 
+  const bool fuelCut  = !masterOn || firePushed;
+  const bool startCmd = masterOn && (starterOn || igniterArmed);
+  const bool running  = engineOutputs.N3_pct >= TRENT_IDLE_N3_PCT - 0.5;
+  const bool settled  = engineOutputs.N3_pct < 0.5 && engineOutputs.egt_c <= oatC + 10.0;
+  const bool lit      = engineOutputs.fuel_flow_kgs > 0.02;
+
+  bool resetTimer = false;
+
   // Current State: OFF
   if (engineState == OFF) {
-    if (engineIgniter == 1 && engineStarter && simN3 > 20) {
-      engineState = ON;
-    } else if (engineIgniter == 2 && engineStarter) {
+    if (startCmd) {
       engineState = STARTING;
-    } else {
-      engineState = OFF;
-    }
-  }
-  // Current State: ON
-  else if (engineState == ON) {
-    if (engineStarter) {
-      engineState = ON;
-    } else {
-      engineState = SHUTTING;
-    }
-  }
-  // Current State: Starting.
-  else if (engineState == STARTING) {
-    if (engineStarter && simN3 >= (idleN3 - 0.1)) {
-      engineState = ON;
       resetTimer  = true;
-    } else if (!engineStarter) {
+    }
+    // Current State: ON
+  } else if (engineState == ON) {
+    if (fuelCut || !lit) {
       engineState = SHUTTING;
       resetTimer  = true;
-    } else {
-      engineState = STARTING;
     }
-  }
-  // Current State: Re-Starting.
-  else if (engineState == RESTARTING) {
-    if (engineStarter && simN3 >= (idleN3 - 0.1)) {
+    // Current State: Starting / Re-Starting
+  } else if (engineState == STARTING || engineState == RESTARTING) {
+    if (running) {
       engineState = ON;
       resetTimer  = true;
-    } else if (!engineStarter) {
-      engineState = SHUTTING;
+    } else if (fuelCut) {
+      engineState = settled ? OFF : SHUTTING;
       resetTimer  = true;
-    } else {
-      engineState = RESTARTING;
     }
-  }
-  // Current State: Shutting
-  else if (engineState == SHUTTING) {
-    if (engineIgniter == 2 && engineStarter) {
+    // Current State: Shutting
+  } else if (engineState == SHUTTING) {
+    if (startCmd && !running) {
       engineState = RESTARTING;
       resetTimer  = true;
-    } else if (!engineStarter && simN3 < 0.05 && simData.engineEgt[engineIdx]->get() <= ambientTemperature) {
+    } else if (settled) {
       engineState = OFF;
       resetTimer  = true;
-    } else if (engineStarter == 1 && simN3 > 50) {
-      engineState = RESTARTING;
-      resetTimer  = true;
-    } else {
-      engineState = SHUTTING;
     }
   }
 
-  simData.engineState[engineIdx]->set(static_cast<int>(engineState));
   if (resetTimer) {
     simData.engineTimer[engineIdx]->set(0);
+  } else if (engineState == STARTING || engineState == SHUTTING) {
+    simData.engineTimer[engineIdx]->set(simData.engineTimer[engineIdx]->get() + deltaTime);
   }
 
-#ifdef PROFILING
-  profilerEngineStateMachine.stop();
-#endif
-
-  return static_cast<EngineState>(engineState);
+  return engineState;
 }
 
-void EngineControl_A380X::engineStartProcedure(int         engine,
-                                               EngineState engineState,
-                                               double      deltaTime,
-                                               double      engineTimer,
-                                               double      simN3,
-                                               double      ambientTemperature) {
-#ifdef PROFILING
-  profilerEngineStartProcedure.start();
-#endif
-
+void EngineControl_A380X::updateOilQuantity(int engine, double thrustN, double deltaTime) {
   const int engineIdx = engine - 1;
 
-  const double idleN1  = simData.engineIdleN1->get();
-  const double idleN3  = simData.engineIdleN3->get();
-  const double idleFF  = simData.engineIdleFF->get();
-  const double idleEGT = simData.engineIdleEGT->get();
+  double oilQtyActual   = simData.engineOil[engineIdx]->get();
+  double oilTotalActual = simData.engineOilTotal[engineIdx]->get();
+  double oilQtyObjective;
+  double oilBurn;
 
-  // Quick Start for expedited engine start for Aircraft Presets
-  if (simData.fadecQuickMode->getAsBool() && simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 < idleN3) {
-    LOG_INFO("Fadec::EngineControl_A380X::engineStartProcedure() - Quick Start");
-    simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 = idleN3;
-    simData.engineCorrectedN3DataPtr[engineIdx]->writeDataToSim();
-    simData.engineCorrectedN1DataPtr[engineIdx]->data().correctedN1 = idleN1;
-    simData.engineCorrectedN1DataPtr[engineIdx]->writeDataToSim();
-    simData.engineN3[engineIdx]->set(idleN3);
-    simData.engineN1[engineIdx]->set(idleN1);
-    simData.engineFF[engineIdx]->set(idleFF);
-    simData.engineEgt[engineIdx]->set(idleEGT);
-    simData.engineState[engineIdx]->set(ON);
-    return;
-  }
-  // delay to simulate the delay between master-switch setting and actual engine start
-  else if (engineTimer < 1.7) {
-    if (msfsHandlerPtr->getSimOnGround()) {
-      simData.engineFuelUsed[engineIdx]->set(0);
-    }
-    simData.engineTimer[engineIdx]->set(engineTimer + deltaTime);
-    simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 = 0;
-    simData.engineCorrectedN3DataPtr[engineIdx]->writeDataToSim();
-  }
-  // engine start procedure after the delay
-  else {
-    const double preN3Fbw  = simData.engineN3[engineIdx]->get();
-    const double preEgtFbw = simData.engineEgt[engineIdx]->get();
-    const double newN3Fbw  = Polynomial_A380X::startN3(simN3, preN3Fbw, idleN3);
+  //--------------------------------------------
+  // Oil Quantity
+  //--------------------------------------------
+  // Calculating Oil Qty as a function of thrust
+  oilQtyObjective = oilTotalActual * (1 - Polynomial_A380X::oilGulpPct(thrustN));
+  oilQtyActual    = oilQtyObjective;
 
-    const double startN1Fbw  = Polynomial_A380X::startN1(newN3Fbw, idleN3, idleN1);
-    const double startFfFbw  = Polynomial_A380X::startFF(newN3Fbw, idleN3, idleFF);
-    const double startEgtFbw = Polynomial_A380X::startEGT(newN3Fbw, idleN3, ambientTemperature, idleEGT);
+  // Oil burnt taken into account for tank and total oil
+  oilBurn        = (0.00011111 * deltaTime);
+  oilQtyActual   = oilQtyActual - oilBurn;
+  oilTotalActual = oilTotalActual - oilBurn;
 
-    const double shutdownEgtFbw = Polynomial_A380X::shutdownEGT(preEgtFbw, ambientTemperature, deltaTime);
-
-    simData.engineN3[engineIdx]->set(newN3Fbw);
-    simData.engineN2[engineIdx]->set(newN3Fbw == 0 ? 0 : newN3Fbw + 0.7);  // 0.7 seems to be an arbitrary offset to get N2 from N3
-    simData.engineN1[engineIdx]->set(startN1Fbw);
-    simData.engineFF[engineIdx]->set(startFfFbw);
-
-    if (engineState == RESTARTING) {
-      if (std::abs(startEgtFbw - preEgtFbw) <= 1.5) {
-        simData.engineEgt[engineIdx]->set(startEgtFbw);
-        simData.engineState[engineIdx]->set(STARTING);
-      } else if (startEgtFbw > preEgtFbw) {
-        // calculation and constant values unclear in original code
-        simData.engineEgt[engineIdx]->set(preEgtFbw + (0.75 * deltaTime * (idleN3 - newN3Fbw)));
-      } else {
-        simData.engineEgt[engineIdx]->set(shutdownEgtFbw);
-      }
-    } else {
-      simData.engineEgt[engineIdx]->set(startEgtFbw);
-    }
-
-    simData.oilTempDataPtr[engineIdx]->data().oilTemp = Polynomial_A380X::startOilTemp(newN3Fbw, idleN3, ambientTemperature);
-    simData.oilTempDataPtr[engineIdx]->writeDataToSim();
-  }
-
-#ifdef PROFILING
-  profilerEngineStartProcedure.stop();
-#endif
-}
-
-// Original comment: Engine Shutdown Procedure - TEMPORARY SOLUTION
-void EngineControl_A380X::engineShutdownProcedure(int    engine,
-                                                  double deltaTime,
-                                                  double engineTimer,
-                                                  double simN1,
-                                                  double ambientTemperature) {
-#ifdef PROFILING
-  profilerEngineShutdownProcedure.start();
-#endif
-
-  const int engineIdx = engine - 1;
-
-  // Quick Shutdown for expedited engine shutdown for Aircraft Presets
-  if (simData.fadecQuickMode->getAsBool() && simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 > 0.0) {
-    LOG_INFO("Fadec::EngineControl_A380X::engineShutdownProcedure() - Quick Shutdown");
-    simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 = 0;
-    simData.engineCorrectedN3DataPtr[engineIdx]->writeDataToSim();
-    simData.engineCorrectedN1DataPtr[engineIdx]->data().correctedN1 = 0;
-    simData.engineCorrectedN1DataPtr[engineIdx]->writeDataToSim();
-    simData.engineN1[engineIdx]->set(0.0);
-    simData.engineN2[engineIdx]->set(0.0);
-    simData.engineN3[engineIdx]->set(0.0);
-    simData.engineFF[engineIdx]->set(0.0);
-    simData.engineEgt[engineIdx]->set(ambientTemperature);
-    simData.engineTimer[engineIdx]->set(2.0);  // to skip the delay further down
-    return;
-  }
-  // delay to simulate the delay between master-switch setting and actual engine shutdown
-  else if (engineTimer < 1.8) {
-    simData.engineTimer[engineIdx]->set(engineTimer + deltaTime);
-  } else {
-    const double preN1Fbw  = simData.engineN1[engineIdx]->get();
-    const double preN3Fbw  = simData.engineN3[engineIdx]->get();
-    const double preEgtFbw = simData.engineEgt[engineIdx]->get();
-
-    double newN1Fbw = Polynomial_A380X::shutdownN1(preN1Fbw, deltaTime);
-    if (simN1 < 5 && simN1 > newN1Fbw) {  // Takes care of windmilling
-      newN1Fbw = simN1;
-    }
-    const double newN3Fbw  = Polynomial_A380X::shutdownN3(preN3Fbw, deltaTime);
-    const double newEgtFbw = Polynomial_A380X::shutdownEGT(preEgtFbw, ambientTemperature, deltaTime);
-
-    simData.engineN1[engineIdx]->set(newN1Fbw);
-    simData.engineN2[engineIdx]->set(newN3Fbw == 0 ? 0 : newN3Fbw + 0.7);
-    simData.engineN3[engineIdx]->set(newN3Fbw);
-    simData.engineEgt[engineIdx]->set(newEgtFbw);
-  }
-
-#ifdef PROFILING
-  profilerEngineShutdownProcedure.stop();
-#endif
-}
-
-int EngineControl_A380X::updateFF(int    engine,
-                                  double simCN1,
-                                  double mach,
-                                  double pressureAltitude,
-                                  double ambientTemperature,
-                                  double ambientPressure) {
-#ifdef PROFILING
-  profilerUpdateFF.start();
-#endif
-
-  const double correctedFuelFlow = Polynomial_A380X::correctedFuelFlow(simCN1, mach, pressureAltitude);  // in lbs/hr.
-
-  // Checking Fuel Logic and final Fuel Flow
-  double outFlow = 0;  // kg/hour
-  if (correctedFuelFlow >= 1) {
-    outFlow = std::max(0.0,                                                                                  //
-                       (correctedFuelFlow * Fadec::LBS_TO_KGS * EngineRatios::delta2(mach, ambientPressure)  //
-                        * std::sqrt(EngineRatios::theta2(mach, ambientTemperature))));
-  }
-  simData.engineFF[engine - 1]->set(outFlow);
-
-#ifdef PROFILING
-  profilerUpdateFF.stop();
-#endif
-
-  return correctedFuelFlow;
-}
-
-void EngineControl_A380X::updatePrimaryParameters(int engine, double simN1, double simN3) {
-#ifdef PROFILING
-  profilerUpdatePrimaryParameters.start();
-#endif
-
-  const int engineIdx = engine - 1;
-
-  simData.engineN1[engineIdx]->set(simN1);
-  simData.engineN2[engineIdx]->set(simN3 > 0 ? simN3 + 0.7 : simN3);
-  simData.engineN3[engineIdx]->set(simN3);
-
-#ifdef PROFILING
-  profilerUpdatePrimaryParameters.stop();
-#endif
-}
-
-void EngineControl_A380X::updateSecondaryParameters(int          engine,
-                                                    EngineState  engineState,
-                                                    double       deltaTime,
-                                                    bool         simOnGround,
-                                                    const double ambientTemperature,
-                                                    double       deltaN3) {
-#ifdef PROFILING
-  profilerUpdateSecondaryParameters.start();
-#endif
-
-  updateOil(engine, engineState, deltaTime, simOnGround, ambientTemperature, deltaN3);
-
-#ifdef PROFILING
-  profilerUpdateSecondaryParameters.stop();
-#endif
-}
-
-void EngineControl_A380X::updateEGT(int          engine,
-                                    double       engineState,
-                                    double       deltaTime,
-                                    double       simCN1,
-                                    int          correctedFuelFlow,
-                                    const double mach,
-                                    const double pressureAltitude,
-                                    const double ambientTemperature,
-                                    bool         simOnGround) {
-#ifdef PROFILING
-  profilerUpdateEGT.start();
-#endif
-
-  const int engineIdx = engine - 1;
-
-  if (simOnGround && engineState == 0) {
-    simData.engineEgt[engineIdx]->set(ambientTemperature);
-  } else {
-    const double correctedEGT    = Polynomial_A380X::correctedEGT(simCN1, correctedFuelFlow, mach, pressureAltitude);
-    const double egtFbwPrevious  = simData.engineEgt[engineIdx]->get();
-    double       egtFbwActualEng = (correctedEGT * EngineRatios::theta2(mach, ambientTemperature));
-    egtFbwActualEng              = egtFbwActualEng + (egtFbwPrevious - egtFbwActualEng) * std::exp(-0.1 * deltaTime);
-    simData.engineEgt[engineIdx]->set(egtFbwActualEng);
-  }
-
-#ifdef PROFILING
-  profilerUpdateEGT.stop();
-#endif
+  simData.engineOil[engineIdx]->set(oilQtyActual);
+  simData.engineOilTotal[engineIdx]->set(oilTotalActual);
 }
 
 void EngineControl_A380X::updateFuel(double deltaTimeSeconds) {
@@ -683,95 +483,6 @@ void EngineControl_A380X::updateFuel(double deltaTimeSeconds) {
 
   /// Delta time for this update in hours
   const double deltaTimeHours = deltaTimeSeconds / 3600;
-
-  // TODO:  Pump Logic - TO BE IMPLEMENTED
-  /*
-
-  const double pumpStateEngine1 = simData.pumpStateDataPtr->data().pumpStateEngine1;
-  const double pumpStateEngine2 = simData.pumpStateDataPtr->data().pumpStateEngine2;
-  const double pumpStateEngine3 = simData.pumpStateDataPtr->data().pumpStateEngine3;
-  const double pumpStateEngine4 = simData.pumpStateDataPtr->data().pumpStateEngine4;
-
-  // Pump State Logic for Engine 1
-  if (pumpStateEngine1 == 0 && (timerEngine1.elapsed() == 0 || timerEngine1.elapsed() >= 1000)) {
-    if (fuelLeftPre - leftQuantity > 0 && leftQuantity == 0) {
-      timerEngine1.reset();
-      simVars->setPumpStateEngine1(1);
-    } else if (fuelLeftPre == 0 && leftQuantity - fuelLeftPre > 0) {
-      timerEngine1.reset();
-      simVars->setPumpStateEngine1(2);
-    } else {
-      simVars->setPumpStateEngine1(0);
-    }
-  } else if (pumpStateEngine1 == 1 && timerEngine1.elapsed() >= 2100) {
-    simVars->setPumpStateEngine1(0);
-    fuelLeftPre = 0;
-    timerEngine1.reset();
-  } else if (pumpStateEngine1 == 2 && timerEngine1.elapsed() >= 2700) {
-    simVars->setPumpStateEngine1(0);
-    timerEngine1.reset();
-  }
-
-  // Pump State Logic for Engine 2
-  if (pumpStateEngine2 == 0 && (timerEngine2.elapsed() == 0 || timerEngine2.elapsed() >= 1000)) {
-    if (fuelLeftPre - leftQuantity > 0 && leftQuantity == 0) {
-      timerEngine2.reset();
-      simVars->setPumpStateEngine2(1);
-    } else if (fuelLeftPre == 0 && leftQuantity - fuelLeftPre > 0) {
-      timerEngine2.reset();
-      simVars->setPumpStateEngine2(2);
-    } else {
-      simVars->setPumpStateEngine2(0);
-    }
-  } else if (pumpStateEngine2 == 1 && timerEngine2.elapsed() >= 2100) {
-    simVars->setPumpStateEngine2(0);
-    fuelLeftPre = 0;
-    timerEngine2.reset();
-  } else if (pumpStateEngine2 == 2 && timerEngine2.elapsed() >= 2700) {
-    simVars->setPumpStateEngine2(0);
-    timerEngine2.reset();
-  }
-
-  // Pump State Logic for Engine 3
-  if (pumpStateEngine3 == 0 && (timerEngine3.elapsed() == 0 || timerEngine3.elapsed() >= 1000)) {
-    if (fuelRightPre - rightQuantity > 0 && rightQuantity == 0) {
-      timerEngine3.reset();
-      simVars->setPumpStateEngine3(1);
-    } else if (fuelRightPre == 0 && rightQuantity - fuelRightPre > 0) {
-      timerEngine3.reset();
-      simVars->setPumpStateEngine3(2);
-    } else {
-      simVars->setPumpStateEngine3(0);
-    }
-  } else if (pumpStateEngine3 == 1 && timerEngine3.elapsed() >= 2100) {
-    simVars->setPumpStateEngine3(0);
-    fuelRightPre = 0;
-    timerEngine3.reset();
-  } else if (pumpStateEngine3 == 2 && timerEngine3.elapsed() >= 2700) {
-    simVars->setPumpStateEngine3(0);
-    timerEngine3.reset();
-  }
-
-  // Pump State Logic for Engine 4
-  if (pumpStateEngine4 == 0 && (timerEngine4.elapsed() == 0 || timerEngine4.elapsed() >= 1000)) {
-    if (fuelRightPre - rightQuantity > 0 && rightQuantity == 0) {
-      timerEngine4.reset();
-      simVars->setPumpStateEngine4(1);
-    } else if (fuelRightPre == 0 && rightQuantity - fuelRightPre > 0) {
-      timerEngine4.reset();
-      simVars->setPumpStateEngine4(2);
-    } else {
-      simVars->setPumpStateEngine4(0);
-    }
-  } else if (pumpStateEngine4 == 1 && timerEngine4.elapsed() >= 2100) {
-    simVars->setPumpStateEngine4(0);
-    fuelRightPre = 0;
-    timerEngine4.reset();
-  } else if (pumpStateEngine4 == 2 && timerEngine4.elapsed() >= 2700) {
-    simVars->setPumpStateEngine4(0);
-    timerEngine4.reset();
-  }
-  --------------------------------------------*/
 
   // Checking for in-game UI Fuel tampering
   const bool   isReadyVar          = msfsHandlerPtr->getAircraftIsReadyVar();
@@ -939,173 +650,4 @@ void EngineControl_A380X::updateFuel(double deltaTimeSeconds) {
 #ifdef PROFILING
   profilerUpdateFuel.stop();
 #endif
-}
-
-void EngineControl_A380X::updateThrustLimits(double simulationTime,
-                                             double pressureAltitude,
-                                             double ambientTemperature,
-                                             double ambientPressure,
-                                             double mach,
-                                             int    packs,
-                                             int    nai,
-                                             int    wai) {
-#ifdef PROFILING
-  profilerUpdateThrustLimits.start();
-#endif
-
-  const double flexTemp        = simData.airlinerToFlexTemp->get();
-  const double pressAltitude   = simData.simVarsDataPtr->data().pressureAltitude;
-  const double thrustLimitType = simData.thrustLimitType->get();
-
-  // Only latch flex temp if flex was not selected or flex is selected but TLAs are not in flx setting
-  if (!isTransitionActive && (thrustLimitType != 3 || (thrustLimitType == 3 &&
-    (simData.engineTla[E1]->get() != 35.0 || simData.engineTla[E2]->get() != 35.0 || simData.engineTla[E3]->get() != 35.0 || simData.engineTla[E4]->get() != 35.0))
-  )
-  ) {
-    latchedFlexTemperature = flexTemp;
-  }
-
-  // Write all N1 Limits
-  const double altitude = std::min(16600.0, pressAltitude);
-  const double to       = ThrustLimits_A380X::limitN1(0, altitude, ambientTemperature, ambientPressure, 0, packs, nai, wai);
-  const double ga       = ThrustLimits_A380X::limitN1(1, altitude, ambientTemperature, ambientPressure, 0, packs, nai, wai);
-  double       flex_to  = 0;
-  double       flex_ga  = 0;
-  if (latchedFlexTemperature > 0) {
-    flex_to = ThrustLimits_A380X::limitN1(0, altitude, ambientTemperature, ambientPressure, latchedFlexTemperature, packs, nai, wai);
-    flex_ga = ThrustLimits_A380X::limitN1(1, altitude, ambientTemperature, ambientPressure, latchedFlexTemperature, packs, nai, wai);
-  }
-  double clb = ThrustLimits_A380X::limitN1(2, pressAltitude, ambientTemperature, ambientPressure, 0, packs, nai, wai);
-  double mct = ThrustLimits_A380X::limitN1(3, pressAltitude, ambientTemperature, ambientPressure, 0, packs, nai, wai);
-
-  // transition between TO and GA limit -----------------------------------------------------------------------------
-  const double machFactorLow = std::max(0.0, std::min(1.0, (mach - 0.04) / 0.04));
-  const double flex          = flex_to + (flex_ga - flex_to) * machFactorLow;
-  double       toga          = to + (ga - to) * machFactorLow;
-
-  // adaption of CLB due to FLX limit if necessary ------------------------------------------------------------------
-  if (prevThrustLimitType != 3 && thrustLimitType == 3) {
-    wasFlexActive = true;
-  } else if (thrustLimitType == 4) {
-    wasFlexActive = false;
-  }
-
-  if (wasFlexActive && !isTransitionActive && thrustLimitType == 1) {
-    isTransitionActive  = true;
-    transitionStartTime = simulationTime;
-    transitionFactor    = 0.2;
-    // transitionFactor = (clb - flex) / transitionTime;
-  } else if (!wasFlexActive) {
-    isTransitionActive  = false;
-    transitionStartTime = 0;
-    transitionFactor    = 0;
-  }
-
-  double deltaThrust = 0;
-  if (isTransitionActive) {
-    double timeDifference = std::max(0.0, (simulationTime - transitionStartTime) - TRANSITION_WAIT_TIME);
-    if (timeDifference > 0 && clb > flex) {
-      wasFlexActive = false;
-    }
-  }
-  if (wasFlexActive) {
-    clb = std::min(clb, flex) + deltaThrust;
-  }
-
-  prevThrustLimitType = thrustLimitType;
-
-  // thrust transitions for MCT and TOGA ----------------------------------------------------------------------------
-
-  // get factors
-  const double machFactor         = std::max(0.0, std::min(1.0, ((mach - 0.37) / 0.05)));
-  const double altitudeFactorLow  = std::max(0.0, std::min(1.0, ((pressureAltitude - 16600) / 500)));
-  const double altitudeFactorHigh = std::max(0.0, std::min(1.0, ((pressureAltitude - 25000) / 500)));
-
-  // adapt thrust limits
-  if (pressureAltitude >= 25000) {
-    mct  = std::max(clb, mct + (clb - mct) * altitudeFactorHigh);
-    toga = mct;
-  } else {
-    if (mct > toga) {
-      mct  = toga + (mct - toga) * std::min(1.0, altitudeFactorLow + machFactor);
-      toga = mct;
-    } else {
-      toga = toga + (mct - toga) * std::min(1.0, altitudeFactorLow + machFactor);
-    }
-  }
-
-  // write limits ---------------------------------------------------------------------------------------------------
-  simData.thrustLimitIdle->set(simData.engineIdleN1->get());
-  simData.thrustLimitToga->set(toga);
-  simData.thrustLimitFlex->set(flex);
-  simData.thrustLimitClimb->set(clb);
-  simData.thrustLimitMct->set(mct);
-
-#ifdef PROFILING
-  profilerUpdateThrustLimits.stop();
-#endif
-}
-
-void EngineControl_A380X::updateOil(int          engine,
-                                    EngineState  engineState,
-                                    double       deltaTime,
-                                    bool         simOnGround,
-                                    const double ambientTemperature,
-                                    double       deltaN3) {
-  const int engineIdx         = engine - 1;
-  double    steadyTemperature = simData.engineEgt[engineIdx]->get();
-
-  double oilQtyActual   = simData.engineOil[engineIdx]->get();
-  double oilTotalActual = simData.engineOilTotal[engineIdx]->get();
-  double oilQtyObjective;
-  double oilBurn;
-  double oilPressureIdle;
-  double oilPressure;
-  double oilTemperature;
-
-  simData.oilTempDataPtr[engineIdx]->requestDataFromSim();
-  double oilTemperaturePre = simData.oilTempDataPtr[engineIdx]->data().oilTemp;
-
-  //--------------------------------------------
-  // Oil Temperature
-  //--------------------------------------------
-  // FIXME feel free to fix oil temperature, values are a little sus
-  if (simOnGround == 1 && engineState == 0 && ambientTemperature > oilTemperaturePre - 10) {
-    oilTemperature = ambientTemperature;
-  } else {
-    thermalEnergy[engineIdx] = (0.995 * thermalEnergy[engineIdx]) + (deltaN3 / deltaTime);
-
-    oilTemperature = Polynomial_A380X::oilTemperature(thermalEnergy[engineIdx], oilTemperaturePre, MAX_OIL_TEMP, deltaTime);
-  }
-
-  //--------------------------------------------
-  // Oil Quantity
-  //--------------------------------------------
-  // Calculating Oil Qty as a function of thrust
-  double thrust   = simData.simVarsDataPtr->data().simEngineThrust[engineIdx] * FORCE_LB_TO_N;
-  oilQtyObjective = oilTotalActual * (1 - Polynomial_A380X::oilGulpPct(thrust));
-  oilQtyActual    = oilQtyObjective;
-
-  // Oil burnt taken into account for tank and total oil
-  oilBurn        = (0.00011111 * deltaTime);
-  oilQtyActual   = oilQtyActual - oilBurn;
-  oilTotalActual = oilTotalActual - oilBurn;
-
-  //--------------------------------------------
-  // Oil Pressure
-  //--------------------------------------------
-  oilPressureIdle = 0;
-
-  double simN3 = simData.simVarsDataPtr->data().simEngineN2[engineIdx];
-  oilPressure  = Polynomial_A380X::oilPressure(simN3) + oilPressureIdle;
-
-  //--------------------------------------------
-  // Engine Writing
-  //--------------------------------------------
-  simData.oilTempDataPtr[engineIdx]->data().oilTemp = oilTemperature;
-  simData.oilTempDataPtr[engineIdx]->writeDataToSim();
-  simData.engineOil[engineIdx]->set(oilQtyActual);
-  simData.engineOilTotal[engineIdx]->set(oilTotalActual);
-  simData.oilPsiDataPtr[engineIdx]->data().oilPsi = oilPressure;
-  simData.oilPsiDataPtr[engineIdx]->writeDataToSim();
 }

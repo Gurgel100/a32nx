@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024 FlyByWire Simulations
+// Copyright (c) 2023-2026 FlyByWire Simulations
 // SPDX-License-Identifier: GPL-3.0
 
 #ifndef FLYBYWIRE_AIRCRAFT_FADECSIMDATA_A380X_HPP
@@ -252,6 +252,7 @@ class FadecSimData_A380X {
 
   NamedVariablePtr fadecQuickMode;  // 0 or 1
   NamedVariablePtr engineTla[4];
+  NamedVariablePtr fireButton[4];   // 0 or 1 (fire pushbutton released)
 
   // ===============================================================================================
 
@@ -448,6 +449,11 @@ class FadecSimData_A380X {
     engineTla[E2] = dm->make_named_var("A32NX_AUTOTHRUST_TLA:2", UNITS.Number, AUTO_READ);
     engineTla[E3] = dm->make_named_var("A32NX_AUTOTHRUST_TLA:3", UNITS.Number, AUTO_READ);
     engineTla[E4] = dm->make_named_var("A32NX_AUTOTHRUST_TLA:4", UNITS.Number, AUTO_READ);
+
+    fireButton[E1] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG1", UNITS.Number, AUTO_READ);
+    fireButton[E2] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG2", UNITS.Number, AUTO_READ);
+    fireButton[E3] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG3", UNITS.Number, AUTO_READ);
+    fireButton[E4] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG4", UNITS.Number, AUTO_READ);
 
     // reset LVars to 0
     engineEgt[E1]->setAndWriteToSim(0);
