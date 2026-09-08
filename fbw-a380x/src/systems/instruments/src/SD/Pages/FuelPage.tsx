@@ -1595,13 +1595,16 @@ const ApuIndication: FC<ApuIndicationProps> = ({ x1, x2, y, showMore, apuIsolati
   const [apuMasterPbOn] = useSimVar('L:A32NX_OVHD_APU_MASTER_SW_PB_IS_ON', 'Bool', 1000);
   const isApuMasterPbOn = apuMasterPbOn === 1;
 
+  const isApuIsolationValveOpen = isApuMasterPbOn && apuIsolationValveOpen;
+  const isApuLpValveOpen = isApuMasterPbOn && apuLpValveOpen;
+
   const shouldApuIsolationValveBeOpen = isApuMasterPbOn;
   const shouldApuLpValveBeOpen = isApuMasterPbOn;
 
-  const areBothValvesOpen = apuIsolationValveOpen && apuLpValveOpen;
-  const areBothValvesClosed = !apuIsolationValveOpen && !apuLpValveOpen;
+  const areBothValvesOpen = isApuIsolationValveOpen && isApuLpValveOpen;
+  const areBothValvesClosed = !isApuIsolationValveOpen && !isApuLpValveOpen;
   const isNormalState =
-    apuIsolationValveOpen === shouldApuIsolationValveBeOpen && apuLpValveOpen === shouldApuLpValveBeOpen;
+    isApuIsolationValveOpen === shouldApuIsolationValveBeOpen && isApuLpValveOpen === shouldApuLpValveBeOpen;
 
   return (
     <g>
