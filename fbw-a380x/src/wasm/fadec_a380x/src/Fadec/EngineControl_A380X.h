@@ -8,6 +8,8 @@
 
 #include "FadecSimData_A380X.hpp"
 #include "FuelConfiguration_A380X.h"
+#include "Trent900/trent900_engine_sim.h"
+#include "Trent900/trent900_engine_sim_reference.h"
 
 #define FILENAME_FADEC_CONF_DIRECTORY "\\work\\AircraftStates\\"
 #define FILENAME_FADEC_CONF_FILE_EXTENSION ".ini"
@@ -60,6 +62,12 @@ class EngineControl_A380X {
   bool   wasFlexActive;
   double transitionStartTime;
   double transitionFactor;
+
+  // ATTCS (Automatic Takeoff Thrust Control System - ATA 76)
+  bool   attcsArmed                  = false;
+  bool   attcsTriggered              = false;
+  double departureRunwayElevation    = 0.0;
+  bool   departureElevationCaptured  = false;
 
   // TODO - might not be required - feeds into stateMachine but really relevant
   double prevSimEngineN3[4] = {0.0, 0.0, 0.0, 0.0};
@@ -315,6 +323,17 @@ class EngineControl_A380X {
    * @param deltaN3 Difference between last N3 and current N3
    */
   void updateOil(int engine, EngineState engineState, double deltaTime, bool simOnGround, const double ambientTemperature, double deltaN3);
+
+  // ===============================================================================================
+  // High-Fidelity Rolls-Royce Trent 900 & FADEC Integration
+  // ===============================================================================================
+  struct0_T trentEngineState[4]{};
+  struct1_T trentFadecState[4]{};
+  struct2_T trentAccState[4]{};
+  bool      trentInitialized = false;
+
+  void initializeTrentEngines(bool runningSpawn, double alt_meters, double mach, double oat_kelvin);
+  void updateTrentEngine(int engine, EngineState engineState, double deltaTime, double pressureAltitude, double mach, double ambientTemperature, double ambientPressure);
 };
 
 #endif  // FLYBYWIRE_AIRCRAFT_ENGINECONTROL_A380X_H

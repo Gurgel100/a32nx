@@ -55,6 +55,41 @@ void EngineControl_A380X::update() {
 
   generateIdleParameters(pressureAltitude, mach, ambientTemperature, ambientPressure);
 
+  // ATA 76: ATTCS evaluation (Automatic Takeoff Thrust Control System - FCOM DSC-70-20 & DSC-76-20)
+  const bool simOnGround = msfsHandlerPtr->getSimOnGround();
+
+  // Track departure field elevation at start of takeoff roll to support high-elevation runways
+  const bool anyTlaTakeoff = (simData.engineTla[E1]->get() >= 34.0 || simData.engineTla[E2]->get() >= 34.0 ||
+                              simData.engineTla[E3]->get() >= 34.0 || simData.engineTla[E4]->get() >= 34.0);
+  if (simOnGround && anyTlaTakeoff && !departureElevationCaptured) {
+    departureRunwayElevation = pressureAltitude;
+    departureElevationCaptured = true;
+  } else if (!simOnGround && departureElevationCaptured && (pressureAltitude - departureRunwayElevation > 3000.0)) {
+    departureElevationCaptured = false;
+  }
+
+  const double heightAboveTakeoff = departureElevationCaptured ? (pressureAltitude - departureRunwayElevation) : 0.0;
+  const bool isTakeoffPhase = simOnGround || (departureElevationCaptured && heightAboveTakeoff < 1500.0);
+
+  // ATTCS arms ONLY when throttles are physically in the takeoff detent (FLX or TOGA, TLA >= 34 deg)
+  // and at least one engine is operating and spooled up in takeoff thrust range (N3 >= 75%)
+  int numEnginesTakeoffPower = 0;
+  int numEnginesFailed = 0;
+
+  for (int eng = 0; eng < 4; eng++) {
+    const double tlaEng = simData.engineTla[eng]->get();
+    const double n3Eng = trentEngineState[eng].N3_perc;
+    if (tlaEng >= 34.0 && n3Eng >= 75.0) {
+      numEnginesTakeoffPower++;
+    } else if (tlaEng >= 34.0 && (n3Eng < 50.0 || trentEngineState[eng].N1_perc < 30.0)) {
+      numEnginesFailed++;
+    }
+  }
+
+  attcsArmed = isTakeoffPhase && (numEnginesTakeoffPower >= 1 || (anyTlaTakeoff && numEnginesFailed >= 1));
+  attcsTriggered = attcsArmed && (numEnginesFailed >= 1);
+  simData.attcsActive->setAndWriteToSim(attcsTriggered ? 1.0 : 0.0);
+
   // Update engine states
   for (int engine = 1; engine <= 4; engine++) {
     const int engineIdx = engine - 1;
@@ -96,6 +131,9 @@ void EngineControl_A380X::update() {
         updateSecondaryParameters(engine, engineState, deltaTime, simOnGround, ambientTemperature, deltaN3);
         break;
     }
+
+    // High-Fidelity Rolls-Royce Trent 900 3-spool & EPR FADEC execution
+    updateTrentEngine(engine, engineState, deltaTime, pressureAltitude, mach, ambientTemperature, ambientPressure);
   }
 
   // Update fuel & tank data
@@ -328,8 +366,15 @@ EngineControl_A380X::EngineState EngineControl_A380X::engineStateMachine(int    
 
   EngineState engineState = static_cast<EngineState>(simData.engineState[engineIdx]->get());
 
+  const bool fireReleased = simData.fireButtonReleased[engineIdx]->get() > 0.5;
+  if (fireReleased) {
+    if (engineState == ON || engineState == STARTING || engineState == RESTARTING) {
+      engineState = SHUTTING;
+      resetTimer  = true;
+    }
+  }
   // Current State: OFF
-  if (engineState == OFF) {
+  else if (engineState == OFF) {
     if (engineIgniter == 1 && engineStarter && simN3 > 20) {
       engineState = ON;
     } else if (engineIgniter == 2 && engineStarter) {
@@ -370,9 +415,12 @@ EngineControl_A380X::EngineState EngineControl_A380X::engineStateMachine(int    
       engineState = RESTARTING;
     }
   }
-  // Current State: Shutting
+  // Current State: Shutting / Auto-Relight (BUG-P2-023)
+  // Per Airbus FCOM DSC-70: FADEC automatically energizes BOTH Igniters A & B during auto-relight sequence.
+  // Permitted to relight when dual ignition commanded (engineIgniter == 2) or single in auto (engineIgniter == 1),
+  // with either starter assist or in-flight windmill corridor (simN3 > 25%).
   else if (engineState == SHUTTING) {
-    if (engineIgniter == 2 && engineStarter) {
+    if ((engineIgniter == 2 || engineIgniter == 1) && (engineStarter || (!msfsHandlerPtr->getSimOnGround() && simN3 > 25.0))) {
       engineState = RESTARTING;
       resetTimer  = true;
     } else if (!engineStarter && simN3 < 0.05 && simData.engineEgt[engineIdx]->get() <= ambientTemperature) {
@@ -866,11 +914,12 @@ void EngineControl_A380X::updateFuel(double deltaTimeSeconds) {
       // Engines fuel burn routine
       if (*fuelExtraQty[i] > 0) {
         // Cycle Fuel Burn
-        if (aircraftDevelopmentStateVar != 2 && msfsHandlerPtr->getPauseState() == 0) {
+        if (aircraftDevelopmentStateVar != 2 && msfsHandlerPtr->getPauseState() == 0 && deltaTimeHours > 0.0) {
           fuelFlowRateChange   = (*engineFF[i] - *enginePreFF[i]) / deltaTimeHours;
           previousFuelFlowRate = *enginePreFF[i];
-          *fuelBurn[i]         = std::min((fuelFlowRateChange * std::pow(deltaTimeHours, 2) / 2) + (previousFuelFlowRate * deltaTimeHours),
-                                          *fuelExtraQty[i]);  // KG, limits fuelburn to remaining tank qty
+          const double maxAvailableBurnKg = *fuelExtraQty[i] / Fadec::KGS_TO_LBS;
+          const double cycleBurnKg = (fuelFlowRateChange * std::pow(deltaTimeHours, 2) / 2) + (previousFuelFlowRate * deltaTimeHours);
+          *fuelBurn[i] = std::max(0.0, std::min(cycleBurnKg, maxAvailableBurnKg));
         }
         // Fuel Used Accumulators
         *fuelUsedEngine[i] += *fuelBurn[i];
@@ -1037,9 +1086,24 @@ void EngineControl_A380X::updateThrustLimits(double simulationTime,
   // write limits ---------------------------------------------------------------------------------------------------
   simData.thrustLimitIdle->set(simData.engineIdleN1->get());
   simData.thrustLimitToga->set(toga);
-  simData.thrustLimitFlex->set(flex);
+
+  // ATA 76: ATTCS automatic cancellation of FLEX derate to full TOGA rating
+  if (attcsTriggered) {
+    simData.thrustLimitFlex->set(toga);
+    simData.thrustLimitEprFlex->set(1.65);
+  } else {
+    simData.thrustLimitFlex->set(flex);
+    simData.thrustLimitEprFlex->set(latchedFlexTemperature > 0 ? 1.54 : 1.65);
+  }
+
   simData.thrustLimitClimb->set(clb);
   simData.thrustLimitMct->set(mct);
+
+  // write Trent 900 EPR limits -------------------------------------------------------------------------------------
+  simData.thrustLimitEprIdle->set(1.015);
+  simData.thrustLimitEprClimb->set(1.42);
+  simData.thrustLimitEprMct->set(1.52);
+  simData.thrustLimitEprToga->set(1.65);
 
 #ifdef PROFILING
   profilerUpdateThrustLimits.stop();
@@ -1108,4 +1172,247 @@ void EngineControl_A380X::updateOil(int          engine,
   simData.engineOilTotal[engineIdx]->set(oilTotalActual);
   simData.oilPsiDataPtr[engineIdx]->data().oilPsi = oilPressure;
   simData.oilPsiDataPtr[engineIdx]->writeDataToSim();
+}
+
+// =====================================================================================================================
+// High-Fidelity Rolls-Royce Trent 900 & FADEC Implementation
+// =====================================================================================================================
+
+void EngineControl_A380X::initializeTrentEngines(bool runningSpawn, double alt_meters, double mach, double oat_kelvin) {
+  trent900_engine_sim_init();
+  const double initScenario = runningSpawn ? 0.0 : 2.0;
+  for (int i = 0; i < 4; i++) {
+    trent900_engine_sim_multi(i, 0.0, alt_meters, mach, oat_kelvin, 0.05, initScenario, true,
+                              &trentEngineState[i], &trentFadecState[i], &trentAccState[i]);
+  }
+  trentInitialized = true;
+  LOG_INFO("EngineControl_A380X::initializeTrentEngines() - High-fidelity Trent 900 4-engine simulation initialized (runningSpawn=" + std::to_string(runningSpawn) + ")");
+}
+
+void EngineControl_A380X::updateTrentEngine(int         engine,
+                                            EngineState engineState,
+                                            double      deltaTime,
+                                            double      pressureAltitude,
+                                            double      mach,
+                                            double      ambientTemperature,
+                                            double      ambientPressure) {
+  const int engineIdx = engine - 1;
+
+  // Convert inputs to physical units expected by Trent 900 simulation
+  const double alt_meters = std::max(0.0, pressureAltitude * 0.3048);
+  const double oat_kelvin = ambientTemperature + 273.15;
+  const double tla        = simData.engineTla[engineIdx]->get();
+  double       throttle   = std::max(-0.25, std::min(1.0, tla / 45.0));
+
+  // FADEC Control Mode Arbitration (FCOM DSC-70-20-40 & CS-E 50):
+  // 0 = Normal TPR Mode (P50/P20)
+  // 1 = Rated N1 Mode (loss of P20 or P50, or manual overhead selection; A/THR available)
+  // 2 = Unrated N1 Mode (loss of air data; A/THR lost)
+  const bool p20Lost        = (simData.sensorP20Lost[engineIdx] != nullptr && simData.sensorP20Lost[engineIdx]->get() > 0.5);
+  const bool p50Lost        = (simData.sensorP50Lost[engineIdx] != nullptr && simData.sensorP50Lost[engineIdx]->get() > 0.5);
+  const bool airDataLost    = (simData.sensorAirDataLost[engineIdx] != nullptr && simData.sensorAirDataLost[engineIdx]->get() > 0.5);
+  const bool manualN1Mode   = (simData.ovhdEngN1Mode[engineIdx] != nullptr && simData.ovhdEngN1Mode[engineIdx]->get() > 0.5);
+
+  int controlMode = 0;
+  if (airDataLost) {
+    controlMode = 2; // Unrated N1
+  } else if (p20Lost || p50Lost || manualN1Mode) {
+    controlMode = 1; // Rated N1
+  }
+
+  // Autothrust Closed-Loop Demand Arbitration (Option A / FCOM DSC-22-30-70)
+  // Note: Autothrust is available in Normal TPR mode and Rated N1 mode, but inoperative in Unrated N1 mode
+  const double athrStatus = (simData.autothrustStatus != nullptr) ? simData.autothrustStatus->get() : 0.0;
+  if (controlMode != 2 && athrStatus >= 2.0 && tla >= 0.0 && simData.autothrustN1Commanded[engineIdx] != nullptr) {
+    const double n1Cmd = simData.autothrustN1Commanded[engineIdx]->get();
+    if (n1Cmd > 10.0) {
+      const double pilotLeverThrottle = std::max(0.0, std::min(1.0, tla / 45.0));
+      const double athrDemandThrottle = trent900_throttle_from_n1_command(n1Cmd);
+      // In autothrust active mode, thrust is modulated by ATHR up to the pilot's lever position
+      throttle = std::min(pilotLeverThrottle, athrDemandThrottle);
+    }
+  }
+
+  // Airbus A380 Thrust Reverser Safety Interlocks (FCOM DSC-78):
+  // 1. Reversers installed ONLY on inboard engines (Engines 2 & 3); Outboard (1 & 4) locked out.
+  // 2. In-flight reverse strictly locked out (requires onGround squat switch).
+  const bool simOnGround = msfsHandlerPtr->getSimOnGround();
+  trentEngineState[engineIdx].airborne = !simOnGround;
+
+  if (engineIdx == 0 || engineIdx == 3) {
+    // Outboard engines 1 & 4 have NO thrust reversers
+    throttle = std::max(0.0, throttle);
+    trentEngineState[engineIdx].reverse_thrust_deployed = false;
+    trentEngineState[engineIdx].reverse_thrust_position = 0.0;
+    trentEngineState[engineIdx].reverse_thrust_value    = 0.0;
+  } else {
+    // Inboard engines 2 & 3: reverse permitted on ground
+    // Airbus TLA: Forward Idle = 0.0 deg, Reverse Idle = -6.0 deg, Full Reverse = -20.0 deg
+    if (tla < -0.5 && simOnGround) {
+      trentEngineState[engineIdx].reverse_thrust_deployed = true;
+      // Do NOT directly overwrite reverse_thrust_position here:
+      // trent900_engine_sim.c integrates realistic transit dynamics (2.0s deploy, 1.5s stow)
+      // Reverse core thrust modulation: idle between -0.5 and -6.0 deg; scales 0..1 between -6.0 and -20.0 deg
+      const double revThrottle = std::clamp((-tla - 6.0) / (20.0 - 6.0), 0.0, 1.0);
+      throttle = revThrottle;
+    } else {
+      trentEngineState[engineIdx].reverse_thrust_deployed = false;
+      throttle = std::max(0.0, throttle);
+    }
+  }
+
+  if (!trentInitialized) {
+    const bool runningSpawn = (engineState == ON) || !simOnGround ||
+                              (simData.simVarsDataPtr->data().simEngineN1[engineIdx] > 10.0);
+    initializeTrentEngines(runningSpawn, alt_meters, mach, oat_kelvin);
+  }
+
+  // Determine scenario based on engineState and In-Flight Relight Envelope (FCOM DSC-70-10-30)
+  double scenario = 0.0;  // Normal running
+  if (engineState == STARTING || engineState == RESTARTING) {
+    if (!simOnGround) {
+      // In-flight restart envelope: ceiling is FL300
+      if (pressureAltitude > 30000.0) {
+        scenario = 2.0; // Inhibited above FL300 ceiling (remains windmilling)
+      } else {
+        scenario = 1.0; // Relight sequence permitted
+      }
+    } else {
+      scenario = 1.0;   // Ground Engine Start sequence
+    }
+  } else if (engineState == OFF || engineState == SHUTTING) {
+    scenario = 2.0;     // Windmilling / OFF mode
+  } else {
+    // Engine is ON / running
+    const double thrustLimitType = simData.thrustLimitType->get();
+    const double flexTemp        = simData.airlinerToFlexTemp->get();
+    if (thrustLimitType == 3 && flexTemp > 0 && !attcsTriggered) {  // FLX Takeoff
+      scenario                              = 5.0;
+      trentFadecState[engineIdx].flex_active = true;
+      trentFadecState[engineIdx].flex_temp   = flexTemp;
+    } else if (attcsTriggered) {
+      trentFadecState[engineIdx].flex_active = false;
+    }
+  }
+
+  // Pass pneumatic starter pressure, accounting for in-flight windmill vs starter-assist corridor
+  const double vtasKts = mach * 661.4786 * std::sqrt(oat_kelvin / 288.15);
+  const double densityRatio = (ambientPressure / 1013.25) / (oat_kelvin / 288.15);
+  const double iasKts = vtasKts * std::sqrt(std::max(0.01, densityRatio));
+
+  double starterPressPsi = simData.pneuStarterPressure[engineIdx]->get();
+  if (!simOnGround && (engineState == STARTING || engineState == RESTARTING)) {
+    if (pressureAltitude > 30000.0 || iasKts >= 250.0) {
+      // Above FL300 certified ceiling or in windmill corridor (250-330 kts): ATS valve remains closed
+      starterPressPsi = 0.0;
+    }
+  }
+  trentAccState[engineIdx].starter_pressure_psi = starterPressPsi;
+
+  // Dual 5,000 psi hydraulic coupling and fire pushbutton isolation
+  const bool fireReleased = simData.fireButtonReleased[engineIdx]->get() > 0.5;
+  if (fireReleased || engineState == OFF || engineState == SHUTTING) {
+    trentAccState[engineIdx].P_HYD = 0.0;
+    trentAccState[engineIdx].HYD_flow_rate = 0.0;
+    trentAccState[engineIdx].HYD_system_pressure = 0.0;
+    trentAccState[engineIdx].starter_pressure_psi = 0.0;
+    if (fireReleased) {
+      scenario = 0.0;
+      throttle = -0.25;
+    }
+  } else {
+    // Nominal 5,000 psi hydraulic system pressure for A380 dual circuits (Green / Yellow)
+    trentAccState[engineIdx].HYD_system_pressure = 3.4474E+7;
+  }
+
+  // Execute 1 tick of Trent 900 high-fidelity 3-spool simulation
+  trent900_engine_sim_multi(engineIdx, throttle, alt_meters, mach, oat_kelvin, deltaTime,
+                            scenario, false,
+                            &trentEngineState[engineIdx],
+                            &trentFadecState[engineIdx],
+                            &trentAccState[engineIdx]);
+
+  // ATA 30: Atmospheric Icing and Bleed Penalties
+  const bool engineAntiIceOn = (simData.simVarsDataPtr->data().engineAntiIce[engineIdx] > 0.5);
+  const bool wingAntiIceOn   = (simData.wingAntiIce && simData.wingAntiIce->get() > 0.5);
+  double finalEgt = trentEngineState[engineIdx].EGT;
+  double finalFF  = trentEngineState[engineIdx].FF_actual;
+
+  if (engineAntiIceOn) {
+    finalEgt += 15.0;       // +15 deg C EGT penalty
+    finalFF  *= 1.018;      // +1.8% TSFC penalty
+  }
+
+  // Publish true 3-spool rotational speeds and thermodynamics
+  simData.engineN1[engineIdx]->set(trentEngineState[engineIdx].N1_perc);
+  simData.engineN2[engineIdx]->set(trentEngineState[engineIdx].N2_perc);
+  simData.engineN3[engineIdx]->set(trentEngineState[engineIdx].N3_perc);
+  simData.engineEgt[engineIdx]->set(finalEgt);
+  simData.engineFF[engineIdx]->set(finalFF * 3600.0);  // kg/hr
+
+  // Publish Trent 900 Rolls-Royce Multi-Spool Vibration Physics (ATA 70)
+  simData.engineVibN1[engineIdx]->set(trentEngineState[engineIdx].vibration_N1);
+  simData.engineVibN2[engineIdx]->set(trentEngineState[engineIdx].vibration_N2);
+  simData.engineVibN3[engineIdx]->set(trentEngineState[engineIdx].vibration_N3);
+  simData.engineVibWarning[engineIdx]->set(trentEngineState[engineIdx].vibration_warning ? 1.0 : 0.0);
+
+  // Publish Trent 900 Rolls-Royce Oil System Dynamics (ATA 79)
+  const double trentOilPsi = (trentEngineState[engineIdx].N3_perc > 10.0)
+      ? (15.0 + 55.0 * std::pow(trentEngineState[engineIdx].N3_perc / 100.0, 1.4))
+      : (trentEngineState[engineIdx].N3_perc * 1.5);
+  const double trentOilTemp = (trentEngineState[engineIdx].N3_perc > 20.0)
+      ? trentEngineState[engineIdx].oil_temp_N3_bearing
+      : ambientTemperature;
+  const double trentOilQty = 24.5 - (trentEngineState[engineIdx].N3_perc > 20.0 ? 1.5 * (trentEngineState[engineIdx].N3_perc / 100.0) : 0.0);
+
+  simData.oilPsiDataPtr[engineIdx]->data().oilPsi = trentOilPsi;
+  simData.oilPsiDataPtr[engineIdx]->writeDataToSim();
+  simData.oilTempDataPtr[engineIdx]->data().oilTemp = trentOilTemp;
+  simData.oilTempDataPtr[engineIdx]->writeDataToSim();
+  simData.engineOil[engineIdx]->set(trentOilQty);
+
+  // Decouple cockpit indicated N1 from MSFS flight model aerodynamic N1:
+  // Account for secondary bleed extraction (ECS packs & anti-ice) in airframe thrust
+  double thrustBleedMult = 1.0;
+  if ((simData.packsState[0] && simData.packsState[0]->get() > 0.5) ||
+      (simData.packsState[1] && simData.packsState[1]->get() > 0.5)) {
+    thrustBleedMult *= 0.972; // -2.8% thrust
+  }
+  if (wingAntiIceOn) {
+    thrustBleedMult *= 0.972; // -2.8% thrust
+  }
+  if (engineAntiIceOn) {
+    thrustBleedMult *= 0.965; // -3.5% thrust
+  }
+  const double aeroThrustMult = std::max(0.70, std::min(1.05, std::pow(thrustBleedMult, 1.0 / 1.75)));
+
+  // Output physical aerodynamic propulsion to MSFS Flight Model (TURB ENG CORRECTED N1 & N2/N3)
+  // When thrust reversers are deployed or doors are still traveling during restow (> 0.05), forward thrust is neutralized
+  const bool reverserActive = trentEngineState[engineIdx].reverse_thrust_deployed ||
+                              (trentEngineState[engineIdx].reverse_thrust_position > 0.05);
+  const double fwdN1 = reverserActive ? 0.0 : (trentEngineState[engineIdx].N1_perc * aeroThrustMult);
+  simData.engineCorrectedN1DataPtr[engineIdx]->data().correctedN1 = fwdN1;
+  simData.engineCorrectedN1DataPtr[engineIdx]->writeDataToSim();
+  simData.engineCorrectedN3DataPtr[engineIdx]->data().correctedN3 = trentEngineState[engineIdx].N3_perc;
+  simData.engineCorrectedN3DataPtr[engineIdx]->writeDataToSim();
+
+  // Publish Trent 900 Rolls-Royce TPR & FADEC Mode Architecture (EASA TCDS E.012 & FCOM DSC-70-20-40)
+  simData.engineControlMode[engineIdx]->set(static_cast<double>(controlMode));
+  simData.engineN1Degraded[engineIdx]->set((controlMode > 0) ? 1.0 : 0.0);
+  simData.fadecN1Rated[engineIdx]->set((controlMode == 1) ? 1.0 : 0.0);
+  simData.fadecN1Unrated[engineIdx]->set((controlMode == 2) ? 1.0 : 0.0);
+
+  if (controlMode == 0 && (engineState == ON || engineState == STARTING)) {
+    // Normal Mode: True TPR (P50/P20)
+    simData.engineEpr[engineIdx]->set(trentFadecState[engineIdx].EPR);
+    simData.engineEprCmd[engineIdx]->set(trentFadecState[engineIdx].EPR_cmd);
+    simData.engineTpr[engineIdx]->set(trentFadecState[engineIdx].EPR);
+    simData.engineTprCmd[engineIdx]->set(trentFadecState[engineIdx].EPR_cmd);
+  } else {
+    // Degraded N1 Modes: EPR and TPR displays suppressed (amber XX on EWD)
+    simData.engineEpr[engineIdx]->set(0.0);
+    simData.engineEprCmd[engineIdx]->set(0.0);
+    simData.engineTpr[engineIdx]->set(0.0);
+    simData.engineTprCmd[engineIdx]->set(0.0);
+  }
 }

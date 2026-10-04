@@ -32,36 +32,50 @@ export class EGT extends DisplayComponent<EGTProps> {
     0,
   );
 
+  private readonly starterValveOpen = ConsumerSubject.create(
+    this.sub.on(`starter_valve_${this.props.engine}`).whenChanged(),
+    false,
+  );
+
   private radius = 68;
   private startAngle = 270;
   private endAngle = 90;
   private min = 0;
   private max = 1000;
 
-  private warningEGTColor = (EGTemperature: number, throttleMode: number) => {
+  private warningEGTColor = (EGTemperature: number, throttleMode: number, starterValve: boolean) => {
+    if (starterValve && EGTemperature >= 700) {
+      return 'Red';
+    }
     if (EGTemperature >= 900) {
       return 'Red';
     }
-    if (EGTemperature > 850 && throttleMode < 3) {
+    if (EGTemperature > (starterValve ? 700 : 850) && (throttleMode < 33 || throttleMode < 3)) {
       return 'Amber';
     }
     return 'Green';
   };
 
-  private readonly amberVisible = this.throttlePosition.map((tm) => tm < 33);
+  private readonly amberVisible = MappedSubject.create(
+    ([tm, sv]) => sv || tm < 33,
+    this.throttlePosition,
+    this.starterValveOpen,
+  );
 
   private readonly egtColour = MappedSubject.create(
-    ([egt, tm]) => this.warningEGTColor(egt, tm),
+    ([egt, tm, sv]) => this.warningEGTColor(egt, tm, sv),
     this.egt,
     this.throttlePosition,
+    this.starterValveOpen,
   );
 
-  // EEC trims EGT to a max value
-  private readonly trimmedEGT = MappedSubject.create(
-    ([egt, throttleMode]) => Math.min([3, 4].includes(throttleMode) ? 900 : 850, egt),
-    this.egt,
-    this.throttlePosition,
+  private readonly maxLimitEgt = MappedSubject.create(
+    ([starterValve]) => (starterValve ? 700 : 850),
+    this.starterValveOpen,
   );
+
+  // Gauge needle indicator clamped to valid gauge scale range (0 - 1000 °C)
+  private readonly trimmedEGT = this.egt.map((egt) => Math.min(this.max, Math.max(this.min, egt)));
 
   public onAfterRender(node: VNode): void {
     super.onAfterRender(node);
@@ -87,9 +101,7 @@ export class EGT extends DisplayComponent<EGTProps> {
           </g>
           <g visibility={this.props.active.map((it) => (it ? 'inherit' : 'hidden'))}>
             <text class={this.egtColour.map((col) => `Large End ${col}`)} x={this.props.x + 33} y={this.props.y + 11.7}>
-              {this.egt.map((egt) =>
-                Math.min([3, 4].includes(this.throttlePosition.get()) ? 900 : 850, Math.round(egt)),
-              )}
+              {this.egt.map((egt) => Math.round(egt))}
             </text>
             <GaugeComponent
               x={this.props.x}
@@ -144,7 +156,7 @@ export class EGT extends DisplayComponent<EGTProps> {
               />
               <g visibility={this.amberVisible.map((it) => (it ? 'inherit' : 'hidden'))}>
                 <GaugeMaxEGTComponent
-                  value={Subject.create(850)}
+                  value={this.maxLimitEgt}
                   x={this.props.x}
                   y={this.props.y}
                   min={this.min}

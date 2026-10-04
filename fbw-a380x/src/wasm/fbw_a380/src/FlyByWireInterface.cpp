@@ -2975,8 +2975,22 @@ bool FlyByWireInterface::updateFadec(double sampleTime, int fadecIndex) {
   fadecInputs[fadecIndex].in.input.thrust_limit_MCT_percent = idAutothrustThrustLimitMCT->get();
   fadecInputs[fadecIndex].in.input.thrust_limit_FLEX_percent = idAutothrustThrustLimitFLX->get();
   fadecInputs[fadecIndex].in.input.thrust_limit_TOGA_percent = idAutothrustThrustLimitTOGA->get();
-  fadecInputs[fadecIndex].in.input.is_anti_ice_active = simData.engineAntiIce_1 == 1;
-  fadecInputs[fadecIndex].in.input.is_air_conditioning_active = idAirConditioningPack_1->get();
+  bool is_anti_ice_active = false;
+  switch (fadecIndex) {
+    case 0: is_anti_ice_active = (simData.engineAntiIce_1 == 1); break;
+    case 1: is_anti_ice_active = (simData.engineAntiIce_2 == 1); break;
+    case 2: is_anti_ice_active = (simData.engineAntiIce_3 == 1); break;
+    case 3: is_anti_ice_active = (simData.engineAntiIce_4 == 1); break;
+    default: is_anti_ice_active = false; break;
+  }
+  fadecInputs[fadecIndex].in.input.is_anti_ice_active = is_anti_ice_active;
+  bool is_pack_active = false;
+  if (fadecIndex == 0 || fadecIndex == 1) {
+    is_pack_active = (idAirConditioningPack_1->get() == 1);
+  } else {
+    is_pack_active = (idAirConditioningPack_2->get() == 1);
+  }
+  fadecInputs[fadecIndex].in.input.is_air_conditioning_active = is_pack_active;
   fadecInputs[fadecIndex].in.input.ATHR_reset_disable = simConnectInterface.getSimInputThrottles().ATHR_reset_disable == 1;
 
   fadecInputs[fadecIndex].in.prim_1 = primsBusOutputs[0];
@@ -3002,8 +3016,8 @@ bool FlyByWireInterface::updateFadec(double sampleTime, int fadecIndex) {
     simConnectInterface.setClientDataFadec(fadecBusOutputs[fadecIndex], fadecIndex);
   }
 
-  // write output to sim (only after both FADECs have been updated) -------------------------------------------------
-  if (fadecIndex == 1) {
+  // write output to sim (only after all 4 FADECs have been updated) -------------------------------------------------
+  if (fadecIndex == 3) {
     SimOutputThrottles simOutputThrottles = {std::fmin(99.9999999999999, fadecOutputs[0].sim_throttle_lever_pos),
                                              std::fmin(99.9999999999999, fadecOutputs[1].sim_throttle_lever_pos),
                                              std::fmin(99.9999999999999, fadecOutputs[2].sim_throttle_lever_pos),
@@ -3019,7 +3033,9 @@ bool FlyByWireInterface::updateFadec(double sampleTime, int fadecIndex) {
 
     // set autothrust disabled state (when ATHR disconnect is pressed longer than 15s)
     idAutothrustDisabled->set(fadecs[0].getExternalOutputs().out.data_computed.ATHR_disabled ||
-                              fadecs[1].getExternalOutputs().out.data_computed.ATHR_disabled);
+                              fadecs[1].getExternalOutputs().out.data_computed.ATHR_disabled ||
+                              fadecs[2].getExternalOutputs().out.data_computed.ATHR_disabled ||
+                              fadecs[3].getExternalOutputs().out.data_computed.ATHR_disabled);
 
     // update local variables
     idAutothrustN1_TLA[0]->set(fadecOutputs[0].N1_TLA_percent);

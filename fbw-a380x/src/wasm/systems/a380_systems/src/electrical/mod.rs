@@ -193,7 +193,7 @@ impl A380Electrical {
         self.tefo_condition.update(
             (!engines
                 .iter()
-                .any(|e| e.corrected_n2().get::<percent>() > 50.)
+                .any(|e| e.is_above_minimum_idle())
                 || !dc_ess_powered
                     && !electricity.any_is_powered(&[ElectricalBusType::DirectCurrent(2)]))
                 && flt_condition,
@@ -3330,7 +3330,7 @@ mod a380_electrical_circuit_tests {
         }
 
         fn is_above_minimum_idle(&self) -> bool {
-            unimplemented!()
+            self.is_running
         }
 
         fn net_thrust(&self) -> Mass {
@@ -3339,7 +3339,7 @@ mod a380_electrical_circuit_tests {
 
         fn gearbox_speed(&self) -> AngularVelocity {
             AngularVelocity::new::<revolution_per_minute>(
-                self.corrected_n2().get::<ratio>() * 12200.,
+                self.corrected_n2().get::<ratio>() * 12500.,
             )
         }
     }

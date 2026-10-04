@@ -34,7 +34,7 @@ class Table1502_A380X {
       {19.355,  1.6253,  1.6253,  17.345 },
       {22.874,  2.1385,  2.1385,  18.127 },
       {50.147,  10.949,  10.949,  26.627 },
-      {60.000,  16.299,  16.299,  33.728 },
+      {60.000,  17.520,  17.520,  33.728 },
       {67.742,  22.240,  22.240,  40.082 },
       {73.021,  26.877,  26.877,  43.854 },
       {78.299,  35.047,  35.047,  48.899 },
@@ -54,9 +54,8 @@ class Table1502_A380X {
    * @return The calculated expected CN2 at idle in percent.
    */
   static double iCN3(double pressureAltitude, double mach) {
-    // The specific values are likely derived from empirical data or a mathematical model of the engine's behavior.
-    // The original source code does not provide any information on the origin of these values.
-    return 63 / ((std::sqrt)((288.15 - (1.98 * pressureAltitude / 1000)) / 288.15) * (std::sqrt)(1 + (0.2 * (std::pow)(mach, 2))));
+    // Trent 900 HP core ground idle is calibrated to 60.0% N3 at SLS ISA
+    return 60.0 / ((std::sqrt)((288.15 - (1.98 * pressureAltitude / 1000)) / 288.15) * (std::sqrt)(1 + (0.2 * (std::pow)(mach, 2))));
   }
 
   /**
@@ -68,12 +67,12 @@ class Table1502_A380X {
    * @return The calculated corrected fan speed (CN1).
    */
   static double iCN1(double pressureAltitude, double mach, [[maybe_unused]] double ambientTemp) {
-    // Calculate the expected CN3 value
-    const double cn3 = iCN3(pressureAltitude, mach);
+    // Calculate the expected CN3 value clamped to valid table range
+    const double cn3 = std::clamp(iCN3(pressureAltitude, mach), table1502[0][0], table1502[12][0]);
 
-    // Find the row in the table that contains the CN3 value and store the index in i
-    int i = 0;
-    while (table1502[i][0] <= cn3 && i < 13) {
+    // Find the row in the table that contains the CN3 value and store the index in i safely
+    int i = 1;
+    while (i < 12 && table1502[i][0] < cn3) {
       i++;
     }
 

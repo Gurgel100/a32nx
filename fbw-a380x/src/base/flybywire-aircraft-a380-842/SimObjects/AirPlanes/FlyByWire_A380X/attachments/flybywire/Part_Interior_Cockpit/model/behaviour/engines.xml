@@ -39,12 +39,18 @@
             <BLURRED4_NODE_ID_COUNT>2</BLURRED4_NODE_ID_COUNT>
         </DefaultTemplateParameters>
         <UseTemplate Name="ASOBO_GT_Anim">
-            <!-- 385 is used for best visual appearance of the engine blur -->
-            <ANIM_CODE>0.01 385 (L:A32NX_ENGINE_N1:#ID#, Number) * *</ANIM_CODE>
+            <!-- Driven by Trent 900 physical windmilling & 3-spool dynamics -->
+            <ANIM_CODE>
+                (L:A380X_FAN_ANIM_ACTIVE, bool) if{
+                    (L:A380X_FAN_FRAME_DELTA:#ID#, Number)
+                } els{
+                    0.01 385 (L:A38X_TRENT_N1:#ID#, Number) (L:A32NX_ENGINE_N1:#ID#, Number) max * *
+                }
+            </ANIM_CODE>
 			<ANIM_LENGTH>360</ANIM_LENGTH>
 			<ANIM_LAG>0</ANIM_LAG>
-            <ANIM_WRAP>True</ANIM_WRAP>
-            <ANIM_DELTA>True</ANIM_DELTA>
+            <ANIM_WRAP>1</ANIM_WRAP>
+            <ANIM_DELTA>1</ANIM_DELTA>
         </UseTemplate>
         <Component ID="ENGINE_Turbine_#ID#_Visibility">
             <OverrideTemplateParameters>

@@ -391,7 +391,7 @@ impl A380MainPowerSources {
                     context,
                     i,
                     Power::new::<kilowatt>(150.),
-                    360.0..=800.0,
+                    360.0..=820.0,
                 )
             }),
             engine_generator_contactors: [1, 2, 3, 4]

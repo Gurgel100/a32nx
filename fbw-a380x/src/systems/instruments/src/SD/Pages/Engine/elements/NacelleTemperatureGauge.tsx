@@ -81,7 +81,7 @@ const NacelleTemperatureGauge: FC<NacelleTemperatureGaugeProps> = ({ x, y, engin
               radius={radius}
               startAngle={startAngle}
               endAngle={endAngle}
-              className="GaugeIndicator Gauge LineRound SW4"
+              className={`${(typeof value === 'number' && value >= 280) ? 'RedGaugeIndicator ' : 'GaugeIndicator '}Gauge LineRound SW4`}
               indicator
               halfIndicator
               multiplierInner={0.6}

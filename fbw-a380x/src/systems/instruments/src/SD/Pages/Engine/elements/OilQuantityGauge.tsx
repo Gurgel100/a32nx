@@ -14,7 +14,7 @@ const OilQuantityGauge: FC<OilQuantityGaugeProps> = ({ x, y, engine, active, val
   const startAngle = -90;
   const endAngle = 90;
   const min = 0;
-  const max = 18.3;
+  const max = 25;
 
   return (
     <g id={`OilQuantityGauge-${engine}`}>

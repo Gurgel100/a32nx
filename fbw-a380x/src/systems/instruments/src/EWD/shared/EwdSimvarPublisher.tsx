@@ -40,6 +40,20 @@ export interface BaseEwdSimvars {
   memo_right: number;
   nose_gear_compressed: boolean;
   engine_fire_pb: boolean;
+  n2: number;
+  n3: number;
+  fuel_flow: number;
+  oil_press: number;
+  oil_temp: number;
+  starter_valve: boolean;
+  starter_press: number;
+  ign_channel: number;
+  vib_n1: number;
+  vib_n2: number;
+  vib_n3: number;
+  fadec_n1_rated: boolean;
+  fadec_n1_unrated: boolean;
+  n1_degraded: boolean;
   fws1_is_healthy: boolean;
   fws2_is_healthy: boolean;
   afdx_3_3_reachable: boolean;
@@ -62,7 +76,21 @@ type IndexedTopics =
   | 'memo_left'
   | 'memo_right'
   | 'nose_gear_compressed'
-  | 'engine_fire_pb';
+  | 'engine_fire_pb'
+  | 'n2'
+  | 'n3'
+  | 'fuel_flow'
+  | 'oil_press'
+  | 'oil_temp'
+  | 'starter_valve'
+  | 'starter_press'
+  | 'ign_channel'
+  | 'vib_n1'
+  | 'vib_n2'
+  | 'vib_n3'
+  | 'fadec_n1_rated'
+  | 'fadec_n1_unrated'
+  | 'n1_degraded';
 type EwdIndexedEvents = {
   [P in keyof Pick<BaseEwdSimvars, IndexedTopics> as IndexedEventType<P>]: BaseEwdSimvars[P];
 };
@@ -115,6 +143,20 @@ export class EwdSimvarPublisher extends SimVarPublisher<EwdSimvars> {
         { name: 'L:A32NX_LGCIU_#index#_NOSE_GEAR_COMPRESSED', type: SimVarValueType.Bool, indexed: true },
       ],
       ['engine_fire_pb', { name: 'L:A32NX_FIRE_BUTTON_ENG#index#', type: SimVarValueType.Bool, indexed: true }],
+      ['n2', { name: 'L:A38X_TRENT_N2:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['n3', { name: 'L:A38X_TRENT_N3:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['fuel_flow', { name: 'L:A32NX_ENGINE_FF:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['oil_press', { name: 'L:A380X_ENG_OIL_PRESSURE:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['oil_temp', { name: 'GENERAL ENG OIL TEMPERATURE:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['starter_valve', { name: 'L:A32NX_PNEU_ENG_#index#_STARTER_VALVE_OPEN', type: SimVarValueType.Bool, indexed: true }],
+      ['starter_press', { name: 'L:A32NX_PNEU_ENG_#index#_REGULATED_TRANSDUCER_PRESSURE', type: SimVarValueType.Number, indexed: true }],
+      ['ign_channel', { name: 'L:A380X_ENG_IGNITION_CHANNEL:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['vib_n1', { name: 'L:A380X_ENG_VIB_N1:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['vib_n2', { name: 'L:A380X_ENG_VIB_N2:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['vib_n3', { name: 'L:A380X_ENG_VIB_N3:#index#', type: SimVarValueType.Number, indexed: true }],
+      ['fadec_n1_rated', { name: 'L:A380X_ENG_FADEC_N1_MODE_RATED:#index#', type: SimVarValueType.Bool, indexed: true }],
+      ['fadec_n1_unrated', { name: 'L:A380X_ENG_FADEC_N1_MODE_UNRATED:#index#', type: SimVarValueType.Bool, indexed: true }],
+      ['n1_degraded', { name: 'L:A380X_ENG_N1_DEGRADED:#index#', type: SimVarValueType.Bool, indexed: true }],
       ['fws1_is_healthy', { name: 'L:A32NX_FWS1_IS_HEALTHY', type: SimVarValueType.Bool }],
       ['fws2_is_healthy', { name: 'L:A32NX_FWS2_IS_HEALTHY', type: SimVarValueType.Bool }],
       ['afdx_3_3_reachable', { name: 'L:A32NX_AFDX_3_3_REACHABLE', type: SimVarValueType.Bool }],

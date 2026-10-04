@@ -156,6 +156,7 @@ class FadecSimData_A380X {
     FLOAT64 simEngineN1[4];          // in Percent
     FLOAT64 simEngineN2[4];          // in Percent
     FLOAT64 simEngineThrust[4];      // in Pounds
+    FLOAT64 bleedDuctPressure[4];    // in Psi
   };
   DataDefinitionVector simVarsDataDef = {
       {"ANIMATION DELTA TIME",         0, UNITS.Seconds  }, //
@@ -188,6 +189,10 @@ class FadecSimData_A380X {
       {"TURB ENG JET THRUST",          2, UNITS.Pounds   }, //
       {"TURB ENG JET THRUST",          3, UNITS.Pounds   }, //
       {"TURB ENG JET THRUST",          4, UNITS.Pounds   }, //
+      {"BLEED AIR DUCT PRESSURE",      1, UNITS.Psi      }, //
+      {"BLEED AIR DUCT PRESSURE",      2, UNITS.Psi      }, //
+      {"BLEED AIR DUCT PRESSURE",      3, UNITS.Psi      }, //
+      {"BLEED AIR DUCT PRESSURE",      4, UNITS.Psi      }, //
   };
   DataDefinitionVariablePtr<SimVarsData> simVarsDataPtr;
 
@@ -250,8 +255,38 @@ class FadecSimData_A380X {
   NamedVariablePtr thrustLimitType;
   NamedVariablePtr wingAntiIce;
 
+  // Trent 900 EPR L-Vars
+  NamedVariablePtr engineEpr[4];
+  NamedVariablePtr engineEprCmd[4];
+  NamedVariablePtr thrustLimitEprIdle;
+  NamedVariablePtr thrustLimitEprClimb;
+  NamedVariablePtr thrustLimitEprFlex;
+  NamedVariablePtr thrustLimitEprMct;
+  NamedVariablePtr thrustLimitEprToga;
+
   NamedVariablePtr fadecQuickMode;  // 0 or 1
   NamedVariablePtr engineTla[4];
+  NamedVariablePtr pneuStarterPressure[4];
+  NamedVariablePtr fireButtonReleased[4];
+  NamedVariablePtr attcsActive;
+  NamedVariablePtr engineVibN1[4];
+  NamedVariablePtr engineVibN2[4];
+  NamedVariablePtr engineVibN3[4];
+  NamedVariablePtr engineVibWarning[4];
+  // Trent 900 Rolls-Royce TPR & FADEC Mode Architecture (EASA TCDS E.012 & FCOM DSC-70-20-40)
+  NamedVariablePtr engineTpr[4];
+  NamedVariablePtr engineTprCmd[4];
+  NamedVariablePtr engineControlMode[4];
+  NamedVariablePtr engineN1Degraded[4];
+  NamedVariablePtr fadecN1Rated[4];
+  NamedVariablePtr fadecN1Unrated[4];
+  NamedVariablePtr sensorP20Lost[4];
+  NamedVariablePtr sensorP50Lost[4];
+  NamedVariablePtr sensorAirDataLost[4];
+  NamedVariablePtr ovhdEngN1Mode[4];
+
+  NamedVariablePtr autothrustStatus;
+  NamedVariablePtr autothrustN1Commanded[4];
 
   // ===============================================================================================
 
@@ -434,6 +469,23 @@ class FadecSimData_A380X {
     thrustLimitMct   = dm->make_named_var("A32NX_AUTOTHRUST_THRUST_LIMIT_MCT", UNITS.Number, AUTO_WRITE);
     thrustLimitToga  = dm->make_named_var("A32NX_AUTOTHRUST_THRUST_LIMIT_TOGA", UNITS.Number, AUTO_WRITE);
 
+    // Initialize Trent 900 EPR L-Vars
+    engineEpr[E1] = dm->make_named_var("A32NX_ENGINE_EPR:1", UNITS.Number, AUTO_READ_WRITE);
+    engineEpr[E2] = dm->make_named_var("A32NX_ENGINE_EPR:2", UNITS.Number, AUTO_READ_WRITE);
+    engineEpr[E3] = dm->make_named_var("A32NX_ENGINE_EPR:3", UNITS.Number, AUTO_READ_WRITE);
+    engineEpr[E4] = dm->make_named_var("A32NX_ENGINE_EPR:4", UNITS.Number, AUTO_READ_WRITE);
+
+    engineEprCmd[E1] = dm->make_named_var("A32NX_ENGINE_EPR_COMMANDED:1", UNITS.Number, AUTO_READ_WRITE);
+    engineEprCmd[E2] = dm->make_named_var("A32NX_ENGINE_EPR_COMMANDED:2", UNITS.Number, AUTO_READ_WRITE);
+    engineEprCmd[E3] = dm->make_named_var("A32NX_ENGINE_EPR_COMMANDED:3", UNITS.Number, AUTO_READ_WRITE);
+    engineEprCmd[E4] = dm->make_named_var("A32NX_ENGINE_EPR_COMMANDED:4", UNITS.Number, AUTO_READ_WRITE);
+
+    thrustLimitEprIdle  = dm->make_named_var("A32NX_AUTOTHRUST_EPR_LIMIT_IDLE", UNITS.Number, AUTO_WRITE);
+    thrustLimitEprClimb = dm->make_named_var("A32NX_AUTOTHRUST_EPR_LIMIT_CLB", UNITS.Number, AUTO_WRITE);
+    thrustLimitEprFlex  = dm->make_named_var("A32NX_AUTOTHRUST_EPR_LIMIT_FLX", UNITS.Number, AUTO_WRITE);
+    thrustLimitEprMct   = dm->make_named_var("A32NX_AUTOTHRUST_EPR_LIMIT_MCT", UNITS.Number, AUTO_WRITE);
+    thrustLimitEprToga  = dm->make_named_var("A32NX_AUTOTHRUST_EPR_LIMIT_TOGA", UNITS.Number, AUTO_WRITE);
+
     packsState[0]       = dm->make_named_var("A32NX_COND_PACK_1_IS_OPERATING", UNITS.Number, AUTO_READ);
     packsState[1]       = dm->make_named_var("A32NX_COND_PACK_2_IS_OPERATING", UNITS.Number, AUTO_READ);
     wingAntiIce         = dm->make_named_var("A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON", UNITS.Number, AUTO_READ);
@@ -449,7 +501,53 @@ class FadecSimData_A380X {
     engineTla[E3] = dm->make_named_var("A32NX_AUTOTHRUST_TLA:3", UNITS.Number, AUTO_READ);
     engineTla[E4] = dm->make_named_var("A32NX_AUTOTHRUST_TLA:4", UNITS.Number, AUTO_READ);
 
+    pneuStarterPressure[E1] = dm->make_named_var("A32NX_PNEU_ENG_1_STARTER_CONTAINER_PRESSURE", UNITS.Psi, AUTO_READ);
+    pneuStarterPressure[E2] = dm->make_named_var("A32NX_PNEU_ENG_2_STARTER_CONTAINER_PRESSURE", UNITS.Psi, AUTO_READ);
+    pneuStarterPressure[E3] = dm->make_named_var("A32NX_PNEU_ENG_3_STARTER_CONTAINER_PRESSURE", UNITS.Psi, AUTO_READ);
+    pneuStarterPressure[E4] = dm->make_named_var("A32NX_PNEU_ENG_4_STARTER_CONTAINER_PRESSURE", UNITS.Psi, AUTO_READ);
+
+    fireButtonReleased[E1] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG1", UNITS.Bool, AUTO_READ);
+    fireButtonReleased[E2] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG2", UNITS.Bool, AUTO_READ);
+    fireButtonReleased[E3] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG3", UNITS.Bool, AUTO_READ);
+    fireButtonReleased[E4] = dm->make_named_var("A32NX_FIRE_BUTTON_ENG4", UNITS.Bool, AUTO_READ);
+
+    attcsActive = dm->make_named_var("A380X_ATTCS_ACTIVE", UNITS.Bool, AUTO_READ_WRITE);
+
+    for (int i = 0; i < 4; i++) {
+      engineVibN1[i] = dm->make_named_var("A380X_ENG_VIB_N1:" + std::to_string(i + 1), UNITS.Number, AUTO_READ_WRITE);
+      engineVibN2[i] = dm->make_named_var("A380X_ENG_VIB_N2:" + std::to_string(i + 1), UNITS.Number, AUTO_READ_WRITE);
+      engineVibN3[i] = dm->make_named_var("A380X_ENG_VIB_N3:" + std::to_string(i + 1), UNITS.Number, AUTO_READ_WRITE);
+      engineVibWarning[i] = dm->make_named_var("A380X_ENG_VIB_WARNING:" + std::to_string(i + 1), UNITS.Bool, AUTO_READ_WRITE);
+      engineVibN1[i]->setAndWriteToSim(0);
+      engineVibN2[i]->setAndWriteToSim(0);
+      engineVibN3[i]->setAndWriteToSim(0);
+      engineVibWarning[i]->setAndWriteToSim(0);
+    }
+
+    autothrustStatus = dm->make_named_var("A32NX_AUTOTHRUST_STATUS", UNITS.Number, AUTO_READ);
+    for (int i = 0; i < 4; i++) {
+      const std::string sIdx = std::to_string(i + 1);
+      autothrustN1Commanded[i] = dm->make_named_var("A32NX_AUTOTHRUST_N1_COMMANDED:" + sIdx, UNITS.Number, AUTO_READ);
+      engineTpr[i] = dm->make_named_var("A380X_ENG_TPR:" + sIdx, UNITS.Number, AUTO_READ_WRITE);
+      engineTprCmd[i] = dm->make_named_var("A380X_ENG_TPR_COMMANDED:" + sIdx, UNITS.Number, AUTO_READ_WRITE);
+      engineControlMode[i] = dm->make_named_var("A380X_ENG_CONTROL_MODE:" + sIdx, UNITS.Number, AUTO_READ_WRITE);
+      engineN1Degraded[i] = dm->make_named_var("A380X_ENG_N1_DEGRADED:" + sIdx, UNITS.Bool, AUTO_READ_WRITE);
+      fadecN1Rated[i] = dm->make_named_var("A380X_ENG_FADEC_N1_MODE_RATED:" + sIdx, UNITS.Bool, AUTO_READ_WRITE);
+      fadecN1Unrated[i] = dm->make_named_var("A380X_ENG_FADEC_N1_MODE_UNRATED:" + sIdx, UNITS.Bool, AUTO_READ_WRITE);
+      sensorP20Lost[i] = dm->make_named_var("A380X_ENG_P20_LOST:" + sIdx, UNITS.Bool, AUTO_READ);
+      sensorP50Lost[i] = dm->make_named_var("A380X_ENG_P50_LOST:" + sIdx, UNITS.Bool, AUTO_READ);
+      sensorAirDataLost[i] = dm->make_named_var("A380X_ENG_AIR_DATA_LOST:" + sIdx, UNITS.Bool, AUTO_READ);
+      ovhdEngN1Mode[i] = dm->make_named_var("A32NX_OVHD_ENG_N1_MODE_ENG" + sIdx, UNITS.Bool, AUTO_READ);
+      engineTpr[i]->setAndWriteToSim(0.0);
+      engineTprCmd[i]->setAndWriteToSim(0.0);
+      engineControlMode[i]->setAndWriteToSim(0.0);
+      engineN1Degraded[i]->setAndWriteToSim(0);
+      fadecN1Rated[i]->setAndWriteToSim(0);
+      fadecN1Unrated[i]->setAndWriteToSim(0);
+    }
+
     // reset LVars to 0
+    attcsActive->setAndWriteToSim(0);
     engineEgt[E1]->setAndWriteToSim(0);
     engineEgt[E2]->setAndWriteToSim(0);
     engineEgt[E3]->setAndWriteToSim(0);
@@ -474,14 +572,14 @@ class FadecSimData_A380X {
     engineN2[E2]->setAndWriteToSim(0);
     engineN2[E3]->setAndWriteToSim(0);
     engineN2[E4]->setAndWriteToSim(0);
-    engineOilTotal[E1]->setAndWriteToSim(0);
-    engineOilTotal[E2]->setAndWriteToSim(0);
-    engineOilTotal[E3]->setAndWriteToSim(0);
-    engineOilTotal[E4]->setAndWriteToSim(0);
-    engineOil[E1]->setAndWriteToSim(0);
-    engineOil[E2]->setAndWriteToSim(0);
-    engineOil[E3]->setAndWriteToSim(0);
-    engineOil[E4]->setAndWriteToSim(0);
+    engineOilTotal[E1]->setAndWriteToSim(25.0);
+    engineOilTotal[E2]->setAndWriteToSim(25.0);
+    engineOilTotal[E3]->setAndWriteToSim(25.0);
+    engineOilTotal[E4]->setAndWriteToSim(25.0);
+    engineOil[E1]->setAndWriteToSim(24.5);
+    engineOil[E2]->setAndWriteToSim(24.5);
+    engineOil[E3]->setAndWriteToSim(24.5);
+    engineOil[E4]->setAndWriteToSim(24.5);
     enginePreFF[E1]->setAndWriteToSim(0);
     enginePreFF[E2]->setAndWriteToSim(0);
     enginePreFF[E3]->setAndWriteToSim(0);
