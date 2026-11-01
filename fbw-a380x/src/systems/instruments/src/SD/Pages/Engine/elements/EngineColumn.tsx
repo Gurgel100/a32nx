@@ -21,25 +21,57 @@ const EngineColumn: FC<Position & EngineNumber & IgnitionActive & EngineColumnPr
   ignition,
   anyEngineRunning,
 }) => {
-  const [N2] = useSimVar(`L:A32NX_ENGINE_N2:${engine}`, 'number', 100); // TODO: Update with correct SimVars
-  const [N3] = useSimVar(`L:A32NX_ENGINE_N3:${engine}`, 'number', 100); // TODO: Update with correct SimVars
-  const [starterValveOpen] = useSimVar(`L:A32NX_PNEU_ENG_${engine}_STARTER_VALVE_OPEN`, 'number', 500); // TODO: Update with correct SimVars
-  const starting = !!(N2 < 58.5 && ignition && starterValveOpen); // TODO Should be N3
+  const [N2] = useSimVar(`L:A32NX_ENGINE_N2:${engine}`, 'number', 100);
+  const [N3] = useSimVar(`L:A32NX_ENGINE_N3:${engine}`, 'number', 100);
+  const [starterValveOpen] = useSimVar(`L:A32NX_PNEU_ENG_${engine}_STARTER_VALVE_OPEN`, 'number', 500);
+  const isStarterValveOpen = !!(starterValveOpen && starterValveOpen > 0.5);
+  const starting = !!(N3 < 58.5 && (ignition || isStarterValveOpen));
   const [fadecManuallyPowered] = useSimVar(`L:A32NX_OVHD_FADEC_${engine}`, 'bool', 500);
+  const [bridgeFadecPowered] = useSimVar(`L:A32NX_FADEC_POWERED_ENG:${engine}`, 'number', 100);
   const [engineFirePbReleased] = useSimVar(`L:A32NX_FIRE_BUTTON_ENG${engine}`, 'bool', 500);
 
-  const fadecPowered = (ignition || anyEngineRunning || fadecManuallyPowered) && !engineFirePbReleased;
+  // Falls back to the manual FADEC override whenever no bridge telemetry is written (0/undefined)
+  const fadecPowered =
+    (ignition ||
+      anyEngineRunning ||
+      (bridgeFadecPowered !== undefined && bridgeFadecPowered > 0 ? bridgeFadecPowered > 0.5 : fadecManuallyPowered)) &&
+    !engineFirePbReleased;
 
   const [fuelFlow] = useSimVar(`L:A32NX_ENGINE_FF:${engine}`, 'number', 100);
 
-  const [n1Vibration] = useSimVar(`TURB ENG VIBRATION:${engine}`, 'number', 100);
-  const n2Vibration = n1Vibration;
-  const n3Vibration = n1Vibration;
+  const [n1VibLVar] = useSimVar(`L:A380X_ENG_VIB_N1:${engine}`, 'number', 100);
+  const [n2VibLVar] = useSimVar(`L:A380X_ENG_VIB_N2:${engine}`, 'number', 100);
+  const [n3VibLVar] = useSimVar(`L:A380X_ENG_VIB_N3:${engine}`, 'number', 100);
+  const [turbEngVib] = useSimVar(`TURB ENG VIBRATION:${engine}`, 'number', 100);
 
-  const [oilQuantity] = useSimVar(`L:A32NX_ENGINE_OIL_QTY:${engine}`, 'number', 500); // TODO: Update with correct SimVars
-  const [engineOilTemperature] = useSimVar(`GENERAL ENG OIL TEMPERATURE:${engine}`, 'celsius', 100); // TODO: Update with correct SimVars
-  // fbw-a380x\src\wasm\fadec_a380x\src\Fadec\EngineControl_A380X.cpp
-  // has all the engine oil simvars in a large section commented out
+  const n1Vibration = n1VibLVar !== undefined && n1VibLVar > 0 ? n1VibLVar : turbEngVib || 0.0;
+  const n2Vibration = n2VibLVar !== undefined && n2VibLVar > 0 ? n2VibLVar : turbEngVib || 0.0;
+  const n3Vibration = n3VibLVar !== undefined && n3VibLVar > 0 ? n3VibLVar : turbEngVib || 0.0;
+
+  const [rawOilQty] = useSimVar(`L:A38X_TRENT_OIL_QTY:${engine}`, 'number', 500);
+  const [altOilQty] = useSimVar(`L:A32NX_ENGINE_OIL_QTY:${engine}`, 'number', 500);
+  const oilQuantity =
+    typeof rawOilQty === 'number' && !isNaN(rawOilQty) && rawOilQty > 0
+      ? rawOilQty
+      : typeof altOilQty === 'number' && !isNaN(altOilQty)
+        ? altOilQty
+        : 0;
+
+  const [rawOilTemp] = useSimVar(`L:A380X_ENG_OIL_TEMP_C:${engine}`, 'number', 100);
+  const [genOilTemp] = useSimVar(`GENERAL ENG OIL TEMPERATURE:${engine}`, 'celsius', 100);
+  const engineOilTemperature =
+    typeof rawOilTemp === 'number' && !isNaN(rawOilTemp) && rawOilTemp > 0 ? rawOilTemp : genOilTemp || 0;
+
+  const [rawNacelleTemp] = useSimVar(`L:A380X_ENG_${engine}_NACELLE_TEMP_C`, 'number', 500);
+  const [altNacelleTemp] = useSimVar(`L:A380X_ENG_NACELLE_TEMP_C:${engine}`, 'number', 500);
+  const nacelleTemp =
+    typeof rawNacelleTemp === 'number' && !isNaN(rawNacelleTemp) && rawNacelleTemp > 0
+      ? rawNacelleTemp
+      : typeof altNacelleTemp === 'number' && !isNaN(altNacelleTemp) && altNacelleTemp > 0
+        ? altNacelleTemp
+        : 20.0;
+
+  const showStartValve = isStarterValveOpen || (ignition && N3 < 58.5);
 
   return (
     <>
@@ -89,9 +121,9 @@ const EngineColumn: FC<Position & EngineNumber & IgnitionActive & EngineColumnPr
       <path className="White SW2" d={`M${engine > 2 ? x - 96 : x + 64},${y + 440} l 26, 0`} />
 
       {/* NAC / Ignition */}
-      {(starting || ignition) && <StartValve x={x} y={y + 536} engine={engine} />}
-      {!starterValveOpen && !ignition && (
-        <NacelleTemperatureGauge x={x} y={y + 536} engine={engine} active={fadecPowered} value={240} />
+      {showStartValve && <StartValve x={x} y={y + 536} engine={engine} />}
+      {!showStartValve && (
+        <NacelleTemperatureGauge x={x} y={y + 536} engine={engine} active={fadecPowered} value={nacelleTemp} />
       )}
     </>
   );

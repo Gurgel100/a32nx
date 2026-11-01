@@ -61,12 +61,37 @@ export class EngineWarningDisplay extends DestroyableComponent<{ bus: ArincEvent
     this.engSelectorPosition,
   );
 
-  private readonly n1Degraded = [
-    Subject.create(false),
-    Subject.create(false),
-    Subject.create(false),
-    Subject.create(false),
-  ];
+  private readonly n1Degraded = [1, 2, 3, 4].map((engNum) => {
+    const ratedSub = ConsumerSubject.create(
+      this.sub.on(`fadec_n1_rated_${engNum as 1 | 2 | 3 | 4}`).whenChanged(),
+      false,
+    );
+    const unratedSub = ConsumerSubject.create(
+      this.sub.on(`fadec_n1_unrated_${engNum as 1 | 2 | 3 | 4}`).whenChanged(),
+      false,
+    );
+    const degSub = ConsumerSubject.create(this.sub.on(`n1_degraded_${engNum as 1 | 2 | 3 | 4}`).whenChanged(), false);
+    return MappedSubject.create(
+      ([r, u, d]) => {
+        let directDegraded = false;
+        if (typeof SimVar !== 'undefined' && SimVar.GetSimVarValue) {
+          try {
+            directDegraded =
+              SimVar.GetSimVarValue(`L:A380X_ENG_N1_DEGRADED:${engNum}`, 'number') > 0.5 ||
+              SimVar.GetSimVarValue(`L:A32NX_ENGINE_N1_DEGRADED:${engNum}`, 'number') > 0.5 ||
+              SimVar.GetSimVarValue(`L:A380X_ENG_FADEC_N1_MODE_RATED:${engNum}`, 'number') > 0.5 ||
+              SimVar.GetSimVarValue(`L:A380X_ENG_FADEC_N1_MODE_UNRATED:${engNum}`, 'number') > 0.5;
+          } catch (_e) {
+            /* Best-effort direct SimVar read; the bus topics remain the primary source */
+          }
+        }
+        return !!(r || u || d || directDegraded);
+      },
+      ratedSub,
+      unratedSub,
+      degSub,
+    );
+  });
 
   private readonly normalChecklistsVisible = ConsumerSubject.create(this.sub.on('fws_show_normal_checklists'), false);
   private readonly normalChecklistsVisibleNotFailed = MappedSubject.create(
@@ -324,6 +349,15 @@ export class EngineWarningDisplay extends DestroyableComponent<{ bus: ArincEvent
                 N1
               </text>
               <text x={386} y={243} class="Cyan F20 Center">
+                %
+              </text>
+
+              {/* N2 N3 */}
+
+              <text x={386} y={268} class="White F19 Center">
+                N2 N3
+              </text>
+              <text x={386} y={284} class="Cyan F19 Center">
                 %
               </text>
 

@@ -12,6 +12,8 @@ use uom::si::{f64::*, power::watt};
 pub(super) struct A380PowerConsumption {
     ac_bus_1_consumer: FlightPhasePowerConsumer,
     ac_bus_2_consumer: FlightPhasePowerConsumer,
+    ac_bus_3_consumer: FlightPhasePowerConsumer,
+    ac_bus_4_consumer: FlightPhasePowerConsumer,
     ac_ess_bus_consumer: FlightPhasePowerConsumer,
     ac_ess_shed_bus_consumer: FlightPhasePowerConsumer,
     ac_stat_inv_bus_consumer: FlightPhasePowerConsumer,
@@ -87,6 +89,66 @@ impl A380PowerConsumption {
                 (
                     PowerConsumerFlightPhase::TaxiIn,
                     Power::new::<watt>(24475.8),
+                ),
+            ]),
+            ac_bus_3_consumer: FlightPhasePowerConsumer::new(
+                context,
+                ElectricalBusType::AlternatingCurrent(3),
+            )
+            .demand([
+                (
+                    PowerConsumerFlightPhase::BeforeStart,
+                    Power::new::<watt>(26960.2),
+                ),
+                (
+                    PowerConsumerFlightPhase::AfterStart,
+                    Power::new::<watt>(21735.8),
+                ),
+                (
+                    PowerConsumerFlightPhase::Takeoff,
+                    Power::new::<watt>(25183.),
+                ),
+                (
+                    PowerConsumerFlightPhase::Flight,
+                    Power::new::<watt>(29777.4),
+                ),
+                (
+                    PowerConsumerFlightPhase::Landing,
+                    Power::new::<watt>(22119.),
+                ),
+                (
+                    PowerConsumerFlightPhase::TaxiIn,
+                    Power::new::<watt>(24475.8),
+                ),
+            ]),
+            ac_bus_4_consumer: FlightPhasePowerConsumer::new(
+                context,
+                ElectricalBusType::AlternatingCurrent(4),
+            )
+            .demand([
+                (
+                    PowerConsumerFlightPhase::BeforeStart,
+                    Power::new::<watt>(26816.3),
+                ),
+                (
+                    PowerConsumerFlightPhase::AfterStart,
+                    Power::new::<watt>(30350.1),
+                ),
+                (
+                    PowerConsumerFlightPhase::Takeoff,
+                    Power::new::<watt>(33797.3),
+                ),
+                (
+                    PowerConsumerFlightPhase::Flight,
+                    Power::new::<watt>(39032.5),
+                ),
+                (
+                    PowerConsumerFlightPhase::Landing,
+                    Power::new::<watt>(30733.3),
+                ),
+                (
+                    PowerConsumerFlightPhase::TaxiIn,
+                    Power::new::<watt>(30243.1),
                 ),
             ]),
             ac_ess_bus_consumer: FlightPhasePowerConsumer::new(
@@ -311,6 +373,8 @@ impl A380PowerConsumption {
     pub fn update(&mut self, context: &UpdateContext) {
         self.ac_bus_1_consumer.update(context);
         self.ac_bus_2_consumer.update(context);
+        self.ac_bus_3_consumer.update(context);
+        self.ac_bus_4_consumer.update(context);
         self.ac_ess_bus_consumer.update(context);
         self.ac_ess_shed_bus_consumer.update(context);
         self.ac_stat_inv_bus_consumer.update(context);
@@ -329,6 +393,8 @@ impl SimulationElement for A380PowerConsumption {
     fn accept<T: SimulationElementVisitor>(&mut self, visitor: &mut T) {
         self.ac_bus_1_consumer.accept(visitor);
         self.ac_bus_2_consumer.accept(visitor);
+        self.ac_bus_3_consumer.accept(visitor);
+        self.ac_bus_4_consumer.accept(visitor);
         self.ac_ess_bus_consumer.accept(visitor);
         self.ac_ess_shed_bus_consumer.accept(visitor);
         self.ac_stat_inv_bus_consumer.accept(visitor);

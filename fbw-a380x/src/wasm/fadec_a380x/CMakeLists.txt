@@ -7,6 +7,7 @@
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900
     ${FBW_COMMON}/cpp-msfs-framework/
     ${FBW_COMMON}/fadec_common/src/
 )
@@ -15,15 +16,24 @@ include_directories(
 set(SOURCE_FILES
     ${FBW_COMMON}/fadec_common/src/Fadec.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Gauge_Fadec.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/trent900_engine_sim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/interp1.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/rt_nonfinite.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Fadec_A380X.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/EngineControl_A380X.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/FuelConfiguration_A380X.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Trent900/fbw_a380_trent900_bridge.c
 )
 
 set(INCLUDE_FILES
     ${FBW_COMMON}/fadec_common/src/Fadec.h
     ${FBW_COMMON}/fadec_common/src/EngineRatios.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/trent900_engine_sim.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/trent900_engine_sim_types.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/trent900_engine_sim_reference.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/rtwtypes.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/interp1.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/rt_nonfinite.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Trent900/rt_defines.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Fadec_A380X.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/EngineControl_A380X.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/FuelConfiguration_A380X.h
@@ -31,7 +41,6 @@ set(INCLUDE_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/ThrustLimits_A380X.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Polynomials_A380X.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Fadec/Table1502_A380X.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/Trent900/fbw_a380_trent900_bridge.h
 )
 
 # create the targets
@@ -40,4 +49,3 @@ add_wasm_library(
     NAME fadec-a380x
     DEPENDENCIES fadec-a380x cpp-msfs-framework-a380x
 )
-

@@ -285,7 +285,14 @@ impl FireDetectionUnit {
     }
 
     fn update_discrete_word(&mut self) {
-        // TODO: Add electrical supply for FDU, when not powered it should return NCD
+        // When FDU is not powered (both DC ESS and DC 2 unpowered), output NoComputedData (NCD)
+        let is_fdu_powered =
+            self.fire_detection_loop[0].is_powered || self.fire_detection_loop[1].is_powered;
+        if !is_fdu_powered {
+            self.discrete_word = Arinc429Word::new(0, SignStatus::NoComputedData);
+            return;
+        }
+
         self.discrete_word = Arinc429Word::new(0, SignStatus::NormalOperation);
 
         // Fixme: The bit order is assumed as no references

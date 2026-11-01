@@ -536,6 +536,7 @@ struct CoreProcessingInputOutputModuleAUnit {
     pressure_regulating_valve_pid: PidController,
     fan_air_valve_pid: PidController,
     cross_bleed_valve_selector: CrossBleedValveSelectorMode,
+    high_pressure_valve_is_open: bool,
 }
 impl CoreProcessingInputOutputModuleAUnit {
     const PRESSURE_REGULATING_VALVE_TARGET_PSI: f64 = 40.; // FCOM
@@ -565,6 +566,7 @@ impl CoreProcessingInputOutputModuleAUnit {
             ),
             fan_air_valve_pid: PidController::new(-0.005, -0.001, 0., 0., 1., 200., 1.),
             cross_bleed_valve_selector: CrossBleedValveSelectorMode::Auto,
+            high_pressure_valve_is_open: false,
         }
     }
 
@@ -581,6 +583,7 @@ impl CoreProcessingInputOutputModuleAUnit {
         self.transfer_pressure = sensors.transfer_pressure();
 
         self.pressure_regulating_valve_is_closed = !sensors.pressure_regulating_valve_is_open();
+        self.high_pressure_valve_is_open = sensors.high_pressure_valve_is_open();
 
         if let Some(transfer_pressure_signal) = sensors.transfer_pressure_transducer_pressure() {
             self.high_pressure_valve_pid
@@ -622,10 +625,21 @@ impl CoreProcessingInputOutputModuleAUnit {
 }
 impl ControllerSignal<HighPressureValveSignal> for CoreProcessingInputOutputModuleAUnit {
     fn signal(&self) -> Option<HighPressureValveSignal> {
-        // TODO: Add overtemperature condition here
+        // BUG-P1-011: 5.0 psi deadband hysteresis prevents high-altitude HPV hunting.
+        // Nominal switching threshold: 33.5 psi. With +/- 2.5 psi deadband:
+        // Opens when IP pressure < 31.0 psi, closes when IP pressure > 36.0 psi.
+        let ip_pressure_close_threshold = Pressure::new::<psi>(36.0); // 33.5 + 2.5 psi
+        let ip_pressure_open_threshold = Pressure::new::<psi>(31.0); // 33.5 - 2.5 psi
+
+        let should_close = if self.high_pressure_valve_is_open {
+            self.intermediate_pressure_compressor_pressure > ip_pressure_close_threshold
+        } else {
+            self.intermediate_pressure_compressor_pressure > ip_pressure_open_threshold
+        };
+
         if self.pressure_regulating_valve_is_closed
             || self.high_pressure_compressor_pressure < Pressure::new::<psi>(15.)
-            || self.intermediate_pressure_compressor_pressure > Pressure::new::<psi>(33.5)
+            || should_close
         {
             Some(HighPressureValveSignal::new_closed())
         } else {
@@ -761,10 +775,13 @@ impl EngineBleedAirSystem {
                 "PNEU_ENG_{}_DIFFERENTIAL_TRANSDUCER_PRESSURE",
                 number
             )),
-            // TODO: These constants are copied from the A320
-            fan_compression_chamber_controller: EngineCompressionChamberController::new(2., 0.),
+            // Rolls-Royce Trent 900 3-Spool Compression Stage Bleed Calibration (ATA 36):
+            // Fan: Stage 1 bypass delivery
+            fan_compression_chamber_controller: EngineCompressionChamberController::new(1.65, 0.),
+            // Intermediate Pressure (IPC Stage 8): delivers ~25 PSI @ ground idle (17.5% N1, 60% N3 proxy), rising above 33.5 PSI in climb/cruise
             intermediate_pressure_compression_chamber_controller:
                 EngineCompressionChamberController::new(2.77366, 0.0667803),
+            // High Pressure (HPC Stage 6): delivers ~50-58 PSI @ idle (60% N3 proxy) while IP < 33.5 PSI; HPV isolates when IP > 33.5 PSI
             high_pressure_compression_chamber_controller: EngineCompressionChamberController::new(
                 2.40411, 1.61386,
             ),
@@ -939,6 +956,10 @@ impl EngineBleedAirSystem {
 
     fn pressure_regulating_valve_is_open(&self) -> bool {
         self.pressure_regulating_valve.is_open()
+    }
+
+    fn high_pressure_valve_is_open(&self) -> bool {
+        self.high_pressure_valve.is_open()
     }
 
     fn intermediate_pressure_transducer_pressure(&self) -> Option<Pressure> {

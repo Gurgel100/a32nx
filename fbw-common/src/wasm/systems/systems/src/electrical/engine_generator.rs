@@ -340,7 +340,9 @@ pub struct DirectDrive {
     output_speed: AngularVelocity,
 }
 impl DirectDrive {
-    const TRANSMISSION_RATIO: f64 = 1.95;
+    // Gearbox pad ratio to VFG rotor: 1.87 maps 100% N3 (12500 RPM) to 23375 RPM
+    // (4 poles -> 779.2 Hz), safely inside the 360-820 Hz normal frequency window.
+    const TRANSMISSION_RATIO: f64 = 1.87;
 
     fn new(context: &mut InitContext, number: usize) -> Self {
         Self {

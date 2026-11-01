@@ -10,7 +10,10 @@ interface OilPressureGaugeProps {
 }
 
 const OilPressureGauge: FC<OilPressureGaugeProps> = ({ x, y, engine, active }) => {
-  const [engineOilPressure] = useSimVar(`ENG OIL PRESSURE:${engine}`, 'psi', 100);
+  const [simVarOilPressure] = useSimVar(`L:A380X_ENG_OIL_PRESSURE:${engine}`, 'number', 100);
+  const [engOilPressure] = useSimVar(`ENG OIL PRESSURE:${engine}`, 'psi', 100);
+  const engineOilPressure =
+    typeof simVarOilPressure === 'number' && !isNaN(simVarOilPressure) ? simVarOilPressure : engOilPressure || 0;
   const radius = 45;
   const startAngle = -90;
   const endAngle = 90;

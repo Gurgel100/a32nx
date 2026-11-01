@@ -5,6 +5,9 @@ import { AttentionGetter } from './AttentionGetter';
 import { EGT } from './EGT';
 import { N1 } from './N1';
 import { ThrustGauge } from './ThrustGauge';
+import { TrentSpoolGauge } from './TrentSpoolGauge';
+import { EngineStartStatus } from './EngineStartStatus';
+import { EngineAlertMonitor } from './EngineAlertMonitor';
 
 interface EngineGaugeProps {
   bus: EventBus;
@@ -34,6 +37,13 @@ export class EngineGauge extends DisplayComponent<EngineGaugeProps> {
           normal={this.props.engineNormalAttentionGettingBox}
           abnormal={this.props.engineAbnormalAttentionGettingBox}
         />
+        <EngineStartStatus
+          bus={this.props.bus}
+          x={this.props.x}
+          y={this.props.y}
+          engine={this.props.engine}
+          active={this.props.active}
+        />
         <ThrustGauge
           bus={this.props.bus}
           x={this.props.x + 2}
@@ -49,6 +59,20 @@ export class EngineGauge extends DisplayComponent<EngineGaugeProps> {
           engine={this.props.engine}
           active={this.props.active}
           n1Degraded={this.props.n1Degraded}
+        />
+        <TrentSpoolGauge
+          bus={this.props.bus}
+          x={this.props.x}
+          y={this.props.y}
+          engine={this.props.engine}
+          active={this.props.active}
+        />
+        <EngineAlertMonitor
+          bus={this.props.bus}
+          x={this.props.x}
+          y={this.props.y}
+          engine={this.props.engine}
+          active={this.props.active}
         />
         <EGT
           bus={this.props.bus}

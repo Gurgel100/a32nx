@@ -189,15 +189,21 @@ export class ThrustGauge extends DisplayComponent<ThrustGaugeProps> {
     this.airspeed3,
   );
 
-  // FIXME replace with actual available thrust when ACUTE is implemented
+  // Smooth continuous available thrust with ram recovery schedule (Airbus FCOM DSC-70-20 / BUG-P5-006)
   private readonly maxThrustAvail = MappedSubject.create(
-    ([cas, thrustLimitIdle, thrustLimitMax, thrIdleOffset]) =>
-      cas < 35
-        ? Math.max(
-            thrIdleOffset * 100,
-            ThrustGauge.thrustPercentFromN1(METOTS_N1_LIMIT, thrustLimitIdle, thrustLimitMax, thrIdleOffset),
-          ) / 10
-        : 10,
+    ([cas, thrustLimitIdle, thrustLimitMax, thrIdleOffset]) => {
+      const staticThrustAvail =
+        Math.max(
+          thrIdleOffset * 100,
+          ThrustGauge.thrustPercentFromN1(METOTS_N1_LIMIT, thrustLimitIdle, thrustLimitMax, thrIdleOffset),
+        ) / 10;
+      if (cas >= 60) {
+        return 10;
+      }
+      // Continuous ram recovery blend between 0 and 60 kt without discontinuous step clamp
+      const blend = Math.min(1.0, Math.max(0.0, cas / 60.0));
+      return staticThrustAvail + (10 - staticThrustAvail) * blend;
+    },
     this.airspeed,
     this.thrustLimitIdle,
     this.thrustLimitMax,

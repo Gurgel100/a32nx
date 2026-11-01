@@ -2,6 +2,8 @@
 
 mod cpiom_f;
 mod fuel_quantity_data_concentrator;
+mod transfer;
+
 use crate::{
     avionics_data_communication_network::A380AvionicsDataCommunicationNetwork,
     fuel::cpiom_f::A380FuelQuantityManagementSystem,
@@ -17,6 +19,7 @@ use systems::{
     shared::{arinc429::Arinc429Word, ElectricalBusType},
     simulation::{InitContext, SimulationElement, SimulationElementVisitor, UpdateContext},
 };
+pub(crate) use transfer::A380FuelTransferSystem;
 use uom::si::f64::*;
 
 #[cfg(test)]
@@ -40,7 +43,7 @@ trait FuelPumpStatus {
     fn is_fuel_pump_running(&self, pump: A380FuelPump) -> bool;
 }
 
-trait SetFuelLevel {
+pub(crate) trait SetFuelLevel {
     fn set_tank_quantity(&mut self, tank: A380FuelTankType, quantity: Mass);
 }
 
@@ -133,6 +136,7 @@ pub(crate) struct A380Fuel {
     fuel_system: A380FuelSystem,
     fuel_quantity_data_concentrators: [FuelQuantityDataConcentrator; 2],
     fuel_quantity_management_system: A380FuelQuantityManagementSystem,
+    fuel_transfer_system: A380FuelTransferSystem,
 }
 impl A380Fuel {
     pub(crate) fn new(context: &mut InitContext) -> Self {
@@ -145,6 +149,7 @@ impl A380Fuel {
             ]
             .map(|(i, powered_by)| FuelQuantityDataConcentrator::new(context, i, powered_by)),
             fuel_quantity_management_system: A380FuelQuantityManagementSystem::new(context),
+            fuel_transfer_system: A380FuelTransferSystem::new(context),
         }
     }
 
@@ -165,6 +170,9 @@ impl A380Fuel {
             &self.fuel_quantity_data_concentrators,
             cpioms.map(|cpiom| cpiom.is_available()),
         );
+        let electrical_available = cpioms.iter().any(|cpiom| cpiom.is_available());
+        self.fuel_transfer_system
+            .update(context, &mut self.fuel_system, electrical_available);
     }
 
     pub(crate) fn feed_four_tank_has_fuel(&self) -> bool {
@@ -193,6 +201,7 @@ impl SimulationElement for A380Fuel {
         self.fuel_system.accept(visitor);
         accept_iterable!(self.fuel_quantity_data_concentrators, visitor);
         self.fuel_quantity_management_system.accept(visitor);
+        self.fuel_transfer_system.accept(visitor);
 
         visitor.visit(self);
     }
