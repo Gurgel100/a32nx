@@ -1,0 +1,88 @@
+{
+  "label": "legacy",
+  "git_sha": "a8682e497b95c254b9df9fb3dfcaed547bc4fd23",
+  "timestamp": "2026-11-27T15:59:25Z",
+  "host": {
+    "cpu_count": 32,
+    "os": "linux x86_64"
+  },
+  "settings": {
+    "delta_ms": 100,
+    "settle_ticks": 200,
+    "measured_ticks": 5000,
+    "repetitions": 5,
+    "seed": 18028476109811552820
+  },
+  "results": {
+    "a320/battery_only": {
+      "min_ns": 1603.0,
+      "median_ns": 1713.0,
+      "p95_ns": 1773.0,
+      "max_ns": 3276.0,
+      "ticks": 25000
+    },
+    "a320/emergency": {
+      "min_ns": 1603.0,
+      "median_ns": 1713.0,
+      "p95_ns": 1774.0,
+      "max_ns": 3758.0,
+      "ticks": 25000
+    },
+    "a320/engines_online": {
+      "min_ns": 1914.0,
+      "median_ns": 2044.0,
+      "p95_ns": 2114.0,
+      "max_ns": 13355.0,
+      "ticks": 25000
+    },
+    "a320/ext_apu": {
+      "min_ns": 2014.0,
+      "median_ns": 2144.0,
+      "p95_ns": 2244.0,
+      "max_ns": 5370.0,
+      "ticks": 25000
+    },
+    "a320/switching_storm": {
+      "min_ns": 1713.0,
+      "median_ns": 2264.0,
+      "p95_ns": 2575.0,
+      "max_ns": 4809.0,
+      "ticks": 25000
+    },
+    "a380/battery_only": {
+      "min_ns": 2935.0,
+      "median_ns": 3085.0,
+      "p95_ns": 3166.0,
+      "max_ns": 5059.0,
+      "ticks": 25000
+    },
+    "a380/emergency": {
+      "min_ns": 3126.0,
+      "median_ns": 3296.0,
+      "p95_ns": 3396.0,
+      "max_ns": 5130.0,
+      "ticks": 25000
+    },
+    "a380/engines_online": {
+      "min_ns": 3587.0,
+      "median_ns": 3797.0,
+      "p95_ns": 3888.0,
+      "max_ns": 5931.0,
+      "ticks": 25000
+    },
+    "a380/ext_apu": {
+      "min_ns": 4288.0,
+      "median_ns": 4518.0,
+      "p95_ns": 4629.0,
+      "max_ns": 6382.0,
+      "ticks": 25000
+    },
+    "a380/switching_storm": {
+      "min_ns": 2946.0,
+      "median_ns": 4048.0,
+      "p95_ns": 4459.0,
+      "max_ns": 6823.0,
+      "ticks": 25000
+    }
+  }
+}

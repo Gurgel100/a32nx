@@ -3,6 +3,8 @@ extern crate systems;
 mod air_conditioning;
 mod airframe;
 mod electrical;
+#[cfg(feature = "bench")]
+pub use electrical::bench_support;
 mod fuel;
 pub mod hydraulic;
 mod navigation;

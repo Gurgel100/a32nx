@@ -376,57 +376,57 @@ impl A380DirectCurrentElectrical {
         electricity.flow(&self.dc_bus_2, &self.refuel_on_bat_contactors[1]);
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn battery_1(&self) -> &Battery {
         &self.battery_1
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn battery_2(&self) -> &Battery {
         &self.battery_2
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn battery_ess(&self) -> &Battery {
         &self.battery_ess
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn battery_apu(&self) -> &Battery {
         &self.battery_apu
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn empty_battery_1(&mut self) {
         self.battery_1.set_empty_battery_charge();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn empty_battery_2(&mut self) {
         self.battery_2.set_empty_battery_charge();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn empty_battery_ess(&mut self) {
         self.battery_ess.set_empty_battery_charge();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn empty_battery_apu(&mut self) {
         self.battery_apu.set_empty_battery_charge();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn tr_1(&self) -> &BatteryChargeRectifierUnit {
         &self.tr_1
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn tr_2(&self) -> &BatteryChargeRectifierUnit {
         &self.tr_2
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn tr_ess(&self) -> &BatteryChargeRectifierUnit {
         &self.tr_ess
     }

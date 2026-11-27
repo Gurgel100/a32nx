@@ -1,0 +1,23 @@
+[package]
+name = "electrical_bench"
+version = "0.1.0"
+authors = ["FlyByWire Simulations"]
+edition = "2021"
+
+# Host-only performance benchmark for the A320/A380 electrical systems.
+# Nothing in this crate is part of a simulator build. It enables the `bench`
+# feature of both aircraft crates to reach the stub-aircraft fixtures they
+# expose through their `bench_support` modules.
+
+[[bin]]
+name = "electrical_bench"
+path = "src/main.rs"
+
+[dependencies]
+a320_systems = { path = "../../fbw-a32nx/src/wasm/systems/a320_systems", features = ["bench"] }
+a380_systems = { path = "../../fbw-a380x/src/wasm/systems/a380_systems", features = ["bench"] }
+systems = { path = "../../fbw-common/src/wasm/systems/systems" }
+uom.workspace = true
+rand.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

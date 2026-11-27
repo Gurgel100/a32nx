@@ -5,6 +5,8 @@ mod airframe;
 mod avionics_data_communication_network;
 mod control_display_system;
 mod electrical;
+#[cfg(feature = "bench")]
+pub use electrical::bench_support;
 mod fire_and_smoke_protection;
 mod fuel;
 pub mod hydraulic;

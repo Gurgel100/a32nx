@@ -288,22 +288,22 @@ impl A320DirectCurrentElectrical {
             == self.hot_bus_2_to_dc_ess_bus_contactor.is_closed()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn battery_1(&self) -> &Battery {
         &self.battery_1
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn battery_2(&self) -> &Battery {
         &self.battery_2
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn empty_battery_1(&mut self) {
         self.battery_1.set_empty_battery_charge();
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "bench"))]
     pub fn empty_battery_2(&mut self) {
         self.battery_2.set_empty_battery_charge();
     }
